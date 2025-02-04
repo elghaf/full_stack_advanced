@@ -16,6 +16,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Format chat history to match backend expectations
+    const formattedChatHistory = chat_history?.map((msg: any) => ({
+      content: msg.content || msg.text || '',  // Handle both content and text fields
+      sender: msg.sender || (msg.isUser ? 'user' : 'ai'),  // Convert isUser to sender type
+    }));
+
     const response = await fetch(`${process.env.BACKEND_URL}/api/chat`, {
       method: 'POST',
       headers: {
@@ -24,7 +30,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         message,
         documentId: document_id,
-        chatHistory: chat_history
+        chatHistory: formattedChatHistory
       }),
     });
 

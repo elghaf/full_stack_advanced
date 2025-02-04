@@ -1,6 +1,6 @@
-import {FileUpload} from "@/components/FileUpload";
-import DocumentPreview from "@/components/DocumentPreview";
-import ChatInterface from "@/components/ChatInterface";
+import {FileUpload} from "@/components/documents/FileUpload";
+import DocumentPreview from "@/components/documents/DocumentPreview";
+import ChatInterface from "@/components/chat_features/ChatInterface";
 
 export default function Home() {
   return (

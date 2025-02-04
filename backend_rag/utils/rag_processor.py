@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_weaviate import WeaviateVectorStore
@@ -186,16 +186,40 @@ class RAGProcessor:
                 "vector_count": 0
             }
 
-    def get_response(self, query: str, chat_history: Optional[List[Dict]] = None, document_id: Optional[str] = None) -> Dict:
-        """Get RAG response for a query."""
+    async def get_response(self, query: str, document_id: str = None, chat_history: List[Dict] = None) -> Tuple[str, List[str]]:
         try:
-            # Create retriever with optional document filter
-            search_kwargs = {}
-            if document_id:
-                where_filter = wvc.query.Filter.by_property("document_id").equal(document_id)
-                search_kwargs["filters"] = where_filter
+            # Get the collection
+            questions = self.client.collections.get(self.collection_name)
             
-            retriever = self.vectorstore.as_retriever(search_kwargs=search_kwargs)
+            # Prepare the query
+            if document_id:
+                # Use hybrid search with document filter
+                response = await questions.query.hybrid(
+                    query=query,
+                    limit=5,
+                    where={
+                        "operator": "Equal",
+                        "path": ["document_id"],
+                        "valueString": document_id
+                    },
+                    return_properties=["text", "document_id", "page"]
+                )
+            else:
+                # Use hybrid search without filter
+                response = await questions.query.hybrid(
+                    query=query,
+                    limit=5,
+                    return_properties=["text", "document_id", "page"]
+                )
+
+            # Extract the relevant documents
+            source_documents = []
+            for obj in response.objects:
+                source_documents.append({
+                    "document_id": obj.properties.get("document_id"),
+                    "page": obj.properties.get("page"),
+                    "text": obj.properties.get("text", "")[:200] + "..."
+                })
 
             # Create prompt template
             system_prompt = (
@@ -205,7 +229,6 @@ class RAGProcessor:
                 "don't know. Use three sentences maximum and keep the "
                 "answer concise.\n\n{context}"
             )
-
             prompt = ChatPromptTemplate.from_messages([
                 ("system", system_prompt),
                 ("human", "{input}"),
@@ -217,34 +240,24 @@ class RAGProcessor:
                 model_name="gpt-4",
                 openai_api_key=self.openai_api_key
             )
-            
+
+            # Create and run the chain
             question_answer_chain = create_stuff_documents_chain(llm, prompt)
-            rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+            
+            # Format the context from source documents
+            context = "\n\n".join([doc["text"] for doc in source_documents])
+            
+            # Get the answer
+            result = question_answer_chain.invoke({
+                "input": query,
+                "context": context
+            })
 
-            # Get response
-            result = rag_chain.invoke({"input": query})
-            logger.info("Received response from LLM")
-
-            return {
-                "answer": result["answer"],
-                "sources": self._format_sources(result.get("source_documents", []))
-            }
+            return result["answer"], source_documents
 
         except Exception as e:
-            logger.error(f"Error getting RAG response: {e}")
+            logger.error(f"Error in get_response: {str(e)}")
             raise
-
-    def _format_sources(self, source_documents: List[Any]) -> List[Dict[str, Any]]:
-        """Format source documents for the response."""
-        sources = []
-        for doc in source_documents:
-            sources.append({
-                "document_id": doc.metadata.get("document_id"),
-                "page": doc.metadata.get("page"),
-                "text": doc.page_content[:200] + "..."
-            })
-        logger.info(f"Found {len(sources)} relevant sources")
-        return sources
 
     def cleanup(self) -> None:
         """Cleanup resources."""

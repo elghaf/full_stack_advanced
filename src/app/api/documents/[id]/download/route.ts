@@ -4,16 +4,16 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const id = params?.id;
-  if (!id) {
-    return NextResponse.json(
-      { error: 'Document ID is required' },
-      { status: 400 }
-    );
-  }
-
   try {
-    const backendUrl = process.env.BACKEND_URL;
+    const id = params?.id;
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Document ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
     const response = await fetch(
       `${backendUrl}/api/documents/${id}/download`,
       {
@@ -22,7 +22,8 @@ export async function GET(
     );
 
     if (!response.ok) {
-      throw new Error(`Backend returned ${response.status}`);
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to download document');
     }
 
     // Get the file content as array buffer
@@ -43,7 +44,7 @@ export async function GET(
   } catch (error) {
     console.error('Download error:', error);
     return NextResponse.json(
-      { error: 'Failed to download document' },
+      { error: error instanceof Error ? error.message : 'Failed to download document' },
       { status: 500 }
     );
   }

@@ -12,13 +12,21 @@ import shutil
 from utils.file_processing import FileProcessor
 from utils.rag_processor import RAGProcessor
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api")
+
 # Initialize processors
 file_processor = FileProcessor()
 rag_processor = RAGProcessor()
 
-router = APIRouter(prefix="/api")
-
-logger = logging.getLogger(__name__)
+# Store uploaded files in a consistent location
+UPLOAD_DIR = Path("uploads")
+TEMP_DIR = Path("temp")
+UPLOAD_DIR.mkdir(exist_ok=True)
+TEMP_DIR.mkdir(exist_ok=True)
 
 class DocumentResponse(BaseModel):
     id: str
@@ -37,6 +45,15 @@ class ChatRequest(BaseModel):
     message: str
     documentId: Optional[str] = None
     chatHistory: Optional[List[ChatMessage]] = None
+
+class ChatResponse(BaseModel):
+    answer: str
+    sources: List[str]
+
+@router.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy"}
 
 @router.get("/previews/{document_id}/{page}")
 async def get_preview(document_id: str, page: int):
@@ -99,7 +116,7 @@ async def get_document(document_id: str):
             detail=f"Error getting document: {str(e)}"
         )
 
-@router.post("/chat")
+@router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
         logger.info(f"Received chat message: {request.message}")
@@ -111,18 +128,16 @@ async def chat(request: ChatRequest):
         # Initialize RAG processor
         rag = RAGProcessor()
         
-        # Get response from RAG
-        response = rag.get_response(
+        # Get response from RAG using query parameter - properly await the async call
+        answer, sources = await rag.get_response(
             query=request.message,
-            document_id=request.documentId
+            document_id=request.documentId,
+            chat_history=request.chatHistory
         )
         
         logger.info("Generated response successfully")
         
-        return {
-            "answer": response["answer"],
-            "sources": response["sources"]
-        }
+        return ChatResponse(answer=answer, sources=sources)
         
     except Exception as e:
         logger.error(f"Error in chat: {str(e)}", exc_info=True)
@@ -179,106 +194,139 @@ async def delete_document(document_id: str):
 @router.get("/documents/{document_id}/download")
 async def download_document(document_id: str):
     try:
-        # Look for the document in uploads directory
-        upload_dir = Path("uploads")
-        logger.info(f"Looking for document {document_id} in {upload_dir}")
+        logger.info(f"Download requested for document: {document_id}")
         
-        # List all files in uploads directory
-        all_files = list(upload_dir.glob("*"))
-        logger.info(f"Files in uploads directory: {[f.name for f in all_files]}")
+        # Search for the file with any extension
+        files = list(UPLOAD_DIR.glob(f"{document_id}.*"))
+        logger.info(f"Found files: {[f.name for f in files]}")
         
-        # Look for any file with the document_id as prefix
-        document_files = list(upload_dir.glob(f"{document_id}.*"))
-        
-        if not document_files:
-            logger.error(f"No files found for document_id: {document_id}")
+        if not files:
+            logger.error(f"No files found for ID: {document_id}")
             raise HTTPException(
                 status_code=404,
-                detail=f"Document not found: {document_id}"
+                detail="Document not found"
             )
-            
-        document_path = document_files[0]
-        logger.info(f"Found document at {document_path}")
         
-        if not document_path.exists():
-            logger.error(f"File exists in glob but not on filesystem: {document_path}")
-            raise HTTPException(
-                status_code=404,
-                detail="Document file not found on filesystem"
-            )
-            
-        # Get file size
-        file_size = document_path.stat().st_size
-        logger.info(f"File size: {file_size} bytes")
+        file_path = files[0]
+        logger.info(f"Found file at: {file_path}")
         
-        # Determine content type based on file extension
+        # Get original filename if available
+        original_filename = file_path.name
+        if (UPLOAD_DIR / "filenames.txt").exists():
+            with open(UPLOAD_DIR / "filenames.txt", "r") as f:
+                for line in f:
+                    stored_name, orig_name = line.strip().split("|")
+                    if stored_name == file_path.name:
+                        original_filename = orig_name
+                        break
+        
+        # Determine content type
         content_types = {
             '.pdf': 'application/pdf',
             '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             '.txt': 'text/plain'
         }
-        content_type = content_types.get(document_path.suffix.lower(), 'application/octet-stream')
+        content_type = content_types.get(file_path.suffix.lower(), 'application/octet-stream')
         
-        # Get original filename from the path
-        original_filename = document_path.name
-        
-        logger.info(f"Sending file: {original_filename} ({content_type})")
+        logger.info(f"Serving {file_path} as {content_type}")
         
         return FileResponse(
-            path=document_path,
+            path=file_path,
             media_type=content_type,
             filename=original_filename,
-            headers={
-                "Content-Disposition": f'attachment; filename="{original_filename}"',
-                "Content-Type": content_type
-            }
+            headers={"Content-Disposition": f'attachment; filename="{original_filename}"'}
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error downloading document: {str(e)}", exc_info=True)
+        logger.error(f"Download error: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error downloading document: {str(e)}"
+            detail=str(e)
         )
 
 @router.post("/files")
 async def upload_file(file: UploadFile = File(...)):
     try:
-        # Generate a unique document ID
         document_id = str(uuid.uuid4())
+        logger.info(f"Processing file upload with ID: {document_id}")
         
-        # Create file path
-        file_path = Path(rag_processor.upload_dir) / file.filename
+        # Validate file type
+        allowed_types = ['application/pdf', 'text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail="File type not supported. Allowed types: PDF, TXT, DOCX"
+            )
         
-        # Save uploaded file
-        with open(file_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
+        # Save file with document ID as name
+        file_extension = Path(file.filename).suffix.lower()
+        save_path = UPLOAD_DIR / f"{document_id}{file_extension}"
         
-        # Process the document with the document_id
-        doc_info = rag_processor.process_document(
-            file_path=file_path,
-            filename=file.filename,
-            document_id=document_id
-        )
+        logger.info(f"Saving file to: {save_path}")
+        
+        # Save the file
+        content = await file.read()
+        with open(save_path, "wb") as f:
+            f.write(content)
+            
+        file_size = os.path.getsize(save_path)
+        logger.info(f"File saved successfully. Size: {file_size} bytes")
+        
+        # Store the original filename mapping
+        with open(UPLOAD_DIR / "filenames.txt", "a") as f:
+            f.write(f"{document_id}{file_extension}|{file.filename}\n")
+        
+        # Process document with RAG
+        try:
+            doc_info = rag_processor.process_document(save_path, file.filename, document_id)
+            logger.info(f"Document processed successfully: {doc_info}")
+        except Exception as e:
+            logger.error(f"Error processing document: {str(e)}")
+            doc_info = {}
         
         return {
             "success": True,
             "document": {
-                "id": doc_info["id"],
-                "name": doc_info["filename"],
-                "type": doc_info["file_type"],
-                "size": doc_info["file_size"],
-                "pageCount": doc_info["page_count"],
-                "previewUrls": doc_info["preview_urls"],
-                "uploadedAt": str(datetime.now().isoformat()),
+                "id": document_id,
+                "name": file.filename,
+                "type": file.content_type,
+                "size": file_size,
+                "uploadedAt": datetime.now().isoformat(),
+                "pageCount": doc_info.get("page_count", 1),
+                "previewUrls": doc_info.get("preview_urls", [])
             }
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Upload error: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+@router.get("/debug/files")
+async def list_files():
+    """Debug endpoint to list all files"""
+    try:
+        files = list(UPLOAD_DIR.glob("*"))
         return {
-            "success": False,
-            "error": str(e)
-        } 
+            "upload_dir": str(UPLOAD_DIR),
+            "files": [
+                {
+                    "name": f.name,
+                    "size": f.stat().st_size,
+                    "modified": datetime.fromtimestamp(f.stat().st_mtime).isoformat()
+                }
+                for f in files if f.is_file()
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error listing files: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        ) 

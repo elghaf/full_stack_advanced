@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server';
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    if (!process.env.BACKEND_URL) {
-      throw new Error('BACKEND_URL environment variable is not set');
-    }
-
-    const formData = await req.formData();
+    const formData = await request.formData();
     const file = formData.get('file') as File;
 
     if (!file) {
@@ -16,43 +12,30 @@ export async function POST(req: Request) {
       );
     }
 
-    const response = await fetch(`${process.env.BACKEND_URL}/files/`, {
+    console.log('Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type); // Debug log
+
+    const response = await fetch('http://localhost:8000/api/files', {
       method: 'POST',
       body: formData,
     });
 
     const data = await response.json();
+    console.log('Backend response:', data); // Debug log
 
     if (!response.ok) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: data?.detail || data?.error || data?.message || 'Upload failed'
-        },
-        { status: response.status }
-      );
-    }
-
-    if (!data?.document) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Invalid response from server: missing document data'
-        },
-        { status: 500 }
-      );
+      throw new Error(data.detail || data.message || `Upload failed with status: ${response.status}`);
     }
 
     return NextResponse.json({
       success: true,
       document: {
-        id: data.document.id || '',
-        name: data.document.name || '',
-        type: data.document.type || '',
-        size: data.document.size || 0,
-        uploadedAt: data.document.uploadedAt || new Date().toISOString(),
-        pageCount: data.document.pageCount || 1,
-        previewUrls: data.document.previewUrls || []
+        id: data.document?.id || '',
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        uploadedAt: new Date().toISOString(),
+        pageCount: data.document?.pageCount || 1,
+        previewUrls: data.document?.previewUrls || []
       }
     });
 
@@ -61,7 +44,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Upload failed'
       },
       { status: 500 }
     );
