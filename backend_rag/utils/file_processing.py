@@ -1,88 +1,114 @@
 from pathlib import Path
-from typing import Tuple, List
+import logging
+from typing import Dict, Any, Tuple
+
+from docx import Document  # This is from python-docx
 import PyPDF2
 from pdf2image import convert_from_path
-from docx import Document
 import os
 import shutil
 
+logger = logging.getLogger(__name__)
+
 class FileProcessor:
     def __init__(self):
+        self.supported_extensions = ['.pdf', '.docx', '.txt']
+        # Create directories if they don't exist
         self.upload_dir = Path("uploads")
         self.preview_dir = Path("previews")
-        
-        # Create directories if they don't exist
-        self.upload_dir.mkdir(exist_ok=True)
-        self.preview_dir.mkdir(exist_ok=True)
+        self.upload_dir.mkdir(parents=True, exist_ok=True)
+        self.preview_dir.mkdir(parents=True, exist_ok=True)
 
-    async def process_pdf(self, file_path: Path) -> Tuple[int, List[str]]:
-        """Process PDF files and generate previews."""
+    def process_file(self, file_path: Path, document_id: str) -> Dict[str, Any]:
+        """Process uploaded file and generate previews if applicable"""
+        try:
+            if not file_path.exists():
+                raise FileNotFoundError(f"File not found: {file_path}")
+
+            file_extension = file_path.suffix.lower()
+            if file_extension not in self.supported_extensions:
+                raise ValueError(f"Unsupported file type: {file_extension}")
+
+            if file_extension == '.pdf':
+                return self._process_pdf(file_path, document_id)
+            elif file_extension == '.docx':
+                return self._process_docx(file_path, document_id)
+            else:  # .txt
+                return self._process_txt(file_path, document_id)
+
+        except Exception as e:
+            logger.error(f"Error processing file: {str(e)}")
+            raise
+
+    def _process_pdf(self, file_path: Path, document_id: str) -> Dict[str, Any]:
+        """Process PDF file and generate previews"""
         try:
             # Get page count
             with open(file_path, 'rb') as file:
                 pdf = PyPDF2.PdfReader(file)
                 page_count = len(pdf.pages)
 
-            # Generate preview images
-            images = convert_from_path(str(file_path))
+            # Create document-specific preview directory
+            preview_dir = self.preview_dir / document_id
+            preview_dir.mkdir(parents=True, exist_ok=True)
+
+            # Generate previews
+            images = convert_from_path(
+                str(file_path),
+                dpi=72,
+                size=(None, 800)
+            )
+            
             preview_urls = []
-
-            # Save preview images
-            file_preview_dir = self.preview_dir / file_path.stem
-            file_preview_dir.mkdir(exist_ok=True)
-
             for i, image in enumerate(images):
-                preview_path = file_preview_dir / f"page_{i + 1}.jpg"
-                image.save(str(preview_path), "JPEG")
-                preview_urls.append(f"/api/previews/{file_path.stem}/{i + 1}")
+                preview_path = preview_dir / f"page_{i + 1}.png"
+                image.save(str(preview_path), "PNG", optimize=True)
+                preview_urls.append(f"/previews/{document_id}/page_{i + 1}.png")
 
-            return page_count, preview_urls
+            return {
+                "page_count": page_count,
+                "preview_urls": preview_urls
+            }
 
         except Exception as e:
-            print(f"Error processing PDF: {e}")
-            return 1, []
+            logger.error(f"Error processing PDF: {str(e)}")
+            raise
 
-    async def process_docx(self, file_path: Path) -> Tuple[int, List[str]]:
-        """Process DOCX files."""
+    def _process_docx(self, file_path: Path, document_id: str) -> Dict[str, Any]:
+        """Process DOCX file"""
         try:
             doc = Document(file_path)
-            page_count = len(doc.paragraphs) // 40 + 1  # Rough estimate
-
-            # Create preview directory
-            file_preview_dir = self.preview_dir / file_path.stem
-            file_preview_dir.mkdir(exist_ok=True)
-
-            # For now, we'll just create a text preview
-            preview_path = file_preview_dir / "page_1.txt"
-            with open(preview_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join([p.text for p in doc.paragraphs]))
-
-            return page_count, [f"/api/previews/{file_path.stem}/1"]
-
+            return {
+                "page_count": len(doc.sections),
+                "preview_urls": []
+            }
         except Exception as e:
-            print(f"Error processing DOCX: {e}")
-            return 1, []
+            logger.error(f"Error processing DOCX: {str(e)}")
+            raise
 
-    async def process_text(self, file_path: Path) -> Tuple[int, List[str]]:
-        """Process text files."""
+    def _process_txt(self, file_path: Path, document_id: str) -> Dict[str, Any]:
+        """Process TXT file"""
+        return {
+            "page_count": 1,
+            "preview_urls": []
+        }
+
+    def cleanup(self, document_id: str) -> None:
+        """Clean up files associated with a document"""
         try:
-            # Create preview directory
-            file_preview_dir = self.preview_dir / file_path.stem
-            file_preview_dir.mkdir(exist_ok=True)
-
-            # Copy the text file as preview
-            preview_path = file_preview_dir / "page_1.txt"
-            shutil.copy2(file_path, preview_path)
-
-            with open(file_path, 'r', encoding='utf-8') as file:
-                lines = file.readlines()
-                page_count = len(lines) // 50 + 1  # Rough estimate
-
-            return page_count, [f"/api/previews/{file_path.stem}/1"]
-
+            preview_dir = self.preview_dir / document_id
+            if preview_dir.exists():
+                for file in preview_dir.glob("*"):
+                    file.unlink()
+                preview_dir.rmdir()
+            
+            upload_file = self.upload_dir / document_id
+            if upload_file.exists():
+                upload_file.unlink()
+                
         except Exception as e:
-            print(f"Error processing text file: {e}")
-            return 1, []
+            logger.error(f"Error cleaning up files: {str(e)}")
+            raise
 
     async def get_preview(self, document_id: str, page: int) -> Tuple[str, bytes]:
         """Get preview file content and type."""

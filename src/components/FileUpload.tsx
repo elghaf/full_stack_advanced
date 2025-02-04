@@ -1,76 +1,108 @@
 'use client'
 
 import React, { useCallback, useState } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { FiUpload } from 'react-icons/fi';
+import { useDocuments } from '@/context/DocumentContext';
+import { FiUploadCloud } from 'react-icons/fi';
 
-interface FileUploadProps {
-  onUploadSuccess?: () => void;
-  onUploadError?: (error: string) => void;
-}
+export const FileUpload = () => {
+  const { addDocument } = useDocuments();
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
-export const FileUpload: React.FC<FileUploadProps> = ({ 
-  onUploadSuccess, 
-  onUploadError 
-}) => {
-  const [uploading, setUploading] = useState(false);
-
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    if (acceptedFiles.length === 0) return;
-
-    setUploading(true);
-    const formData = new FormData();
-    formData.append('file', acceptedFiles[0]);
+  const handleUpload = async (files: FileList) => {
+    if (isUploading) return;
 
     try {
-      const response = await fetch('/api/files', {
-        method: 'POST',
-        body: formData,
-      });
+      setIsUploading(true);
+      
+      for (const file of Array.from(files)) {
+        if (file.size > 10 * 1024 * 1024) { // 10MB limit
+          throw new Error('File size must be less than 10MB');
+        }
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || 'Upload failed');
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/files', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await response.json();
+
+        if (!data.success || !data.document) {
+          throw new Error(data.error || 'Upload failed');
+        }
+
+        // Add the document to context
+        addDocument({
+          id: data.document.id,
+          name: data.document.name,
+          type: data.document.type,
+          size: data.document.size,
+          uploadedAt: data.document.uploadedAt,
+          pageCount: data.document.pageCount || 1,
+          previewUrls: data.document.previewUrls || []
+        });
       }
-
-      const data = await response.json();
-      console.log('Upload successful:', data);
-      onUploadSuccess?.();
     } catch (error) {
       console.error('Upload error:', error);
-      onUploadError?.(error instanceof Error ? error.message : 'Upload failed');
+      alert(error instanceof Error ? error.message : 'Failed to upload file');
     } finally {
-      setUploading(false);
+      setIsUploading(false);
+      setIsDragging(false);
     }
-  }, [onUploadSuccess, onUploadError]);
+  };
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'application/pdf': ['.pdf'],
-      'text/plain': ['.txt'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx']
-    },
-    multiple: false
-  });
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    handleUpload(files);
+  }, [handleUpload]);
 
   return (
-    <div
-      {...getRootProps()}
-      className={`p-10 border-2 border-dashed rounded-lg text-center cursor-pointer
-        ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}
-        ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
-    >
-      <input {...getInputProps()} disabled={uploading} />
-      <FiUpload className="mx-auto h-12 w-12 text-gray-400" />
-      <p className="mt-2 text-sm text-gray-600">
-        {uploading ? 'Uploading...' : 
-          isDragActive ? 'Drop the file here...' : 
-          'Drag & drop a file here, or click to select'}
-      </p>
-      <p className="mt-1 text-xs text-gray-500">
-        Supported files: PDF, TXT, DOCX
-      </p>
+    <div className="p-6">
+      <div
+        className={`w-full border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
+          isDragging ? 'border-custom bg-custom/5' : 'border-gray-300 hover:border-custom'
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <input
+          type="file"
+          id="fileInput"
+          className="hidden"
+          onChange={(e) => e.target.files && handleUpload(e.target.files)}
+          accept=".pdf,.docx,.txt"
+          multiple
+        />
+        <div className="mx-auto flex justify-center">
+          <FiUploadCloud className={`w-12 h-12 ${isUploading ? 'text-custom animate-pulse' : 'text-gray-400'}`} />
+        </div>
+        <p className="mt-4 text-sm text-gray-600">
+          {isUploading ? 'Uploading...' : 'Drag and drop your files here, or'}
+        </p>
+        <label
+          htmlFor="fileInput"
+          className="mt-2 cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-custom hover:bg-custom/90 disabled:opacity-50"
+        >
+          Browse Files
+        </label>
+        <p className="mt-2 text-xs text-gray-500">PDF, DOCX, TXT up to 10MB</p>
+      </div>
     </div>
   );
 };

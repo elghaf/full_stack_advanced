@@ -1,7 +1,22 @@
 // src/services/chatService.ts
 import apiClient from "./apiClient";
 
-export const sendMessage = async (message: string): Promise<string> => {
-  const response = await apiClient.post("/chat", { message });
-  return response.data.response;
+export interface ChatResponse {
+  answer: string;
+  sources: {
+    document_id: string;
+    page: number;
+    text: string;
+  }[];
+}
+
+export const sendMessage = async (
+  message: string, 
+  documentId?: string
+): Promise<ChatResponse> => {
+  const response = await apiClient.post("/chat", { 
+    message,
+    documentId 
+  });
+  return response.data;
 };

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import { Metadata } from 'next';
 import { Inter } from "next/font/google";
 import "@/styles/globals.css";
 import { DocumentProvider } from '@/context/DocumentContext';
@@ -6,8 +6,8 @@ import { DocumentProvider } from '@/context/DocumentContext';
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "RAG Chat Application",
-  description: "A chat application for analyzing documents.",
+  title: 'Document Chat',
+  description: 'Chat with your documents using AI',
 };
 
 export default function RootLayout({

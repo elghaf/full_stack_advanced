@@ -1,44 +1,62 @@
 'use client'
 
-import React, { createContext, useContext, useState } from 'react';
-import { UploadedFile } from '@/types/file';
-import { ChatMessage } from '@/types/chat';
+import { createContext, useContext, useState, ReactNode } from 'react';
+
+interface Document {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  uploadedAt: string;
+  pageCount: number;
+  previewUrls: string[];
+}
 
 interface DocumentContextType {
-  uploadedFiles: UploadedFile[];
-  activeDocument: UploadedFile | null;
-  chatHistory: ChatMessage[];
-  addFile: (file: UploadedFile) => void;
-  setActiveDocument: (file: UploadedFile | null) => void;
-  addMessage: (message: ChatMessage) => void;
+  uploadedFiles: Document[];
+  activeDocument: Document | null;
+  addDocument: (document: Document) => void;
+  setActiveDocument: (document: Document | null) => void;
+  removeDocument: (documentId: string) => void;
 }
 
 const DocumentContext = createContext<DocumentContextType | undefined>(undefined);
 
-export function DocumentProvider({ children }: { children: React.ReactNode }) {
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [activeDocument, setActiveDocument] = useState<UploadedFile | null>(null);
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+export function DocumentProvider({ children }: { children: ReactNode }) {
+  const [uploadedFiles, setUploadedFiles] = useState<Document[]>([]);
+  const [activeDocument, setActiveDocument] = useState<Document | null>(null);
 
-  const addFile = (file: UploadedFile) => {
-    setUploadedFiles(prev => [...prev, file]);
+  const addDocument = (document: Document) => {
+    console.log('Adding document:', document); // Debug log
+    setUploadedFiles(prev => {
+      // Check if document already exists
+      const exists = prev.some(file => file.id === document.id);
+      if (exists) {
+        return prev.map(file => 
+          file.id === document.id ? document : file
+        );
+      }
+      // Add new document at the beginning of the array
+      return [document, ...prev];
+    });
+    setActiveDocument(document);
   };
 
-  const addMessage = (message: ChatMessage) => {
-    setChatHistory(prev => [...prev, message]);
+  const removeDocument = (documentId: string) => {
+    setUploadedFiles(prev => prev.filter(file => file.id !== documentId));
+    if (activeDocument?.id === documentId) {
+      setActiveDocument(null);
+    }
   };
 
   return (
-    <DocumentContext.Provider
-      value={{
-        uploadedFiles,
-        activeDocument,
-        chatHistory,
-        addFile,
-        setActiveDocument,
-        addMessage,
-      }}
-    >
+    <DocumentContext.Provider value={{
+      uploadedFiles,
+      activeDocument,
+      addDocument,
+      setActiveDocument,
+      removeDocument,
+    }}>
       {children}
     </DocumentContext.Provider>
   );
