@@ -108,69 +108,90 @@ const DocumentPreview = () => {
   const handlePreviewError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     setError('Failed to load preview');
     const target = e.target as HTMLImageElement;
-    target.src = "https://ai-public.creatie.ai/gen_page/pdf_preview.png";
+    target.src = "/images/pdf_preview_fallback.png";
   };
-
-  if (!activeDocument) {
-    return (
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="text-center">
-          <p>No document selected</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex-1 flex flex-col">
-      {/* Document header */}
-      <div className="p-4 border-b border-gray-200">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">{activeDocument.name}</h2>
-          <div className="flex space-x-2">
+      {/* Document list sidebar */}
+      <div className="border-b border-gray-200">
+        <div className="flex overflow-x-auto p-2 space-x-2">
+          {uploadedFiles.map((doc) => (
             <button
-              onClick={handleDownloadDocument}
-              disabled={isDownloading}
-              className="p-2 text-gray-600 hover:text-custom rounded-full hover:bg-gray-100"
+              key={doc.id}
+              onClick={() => setActiveDocument(doc)}
+              className={`flex items-center px-3 py-2 rounded-lg text-sm whitespace-nowrap ${
+                activeDocument?.id === doc.id
+                  ? 'bg-custom text-white'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              }`}
             >
-              <FiDownload className="w-5 h-5" />
+              {getFileIcon(doc.type)}
+              <span className="ml-2">{doc.name}</span>
             </button>
-            <button
-              onClick={() => removeDocument(activeDocument.id)}
-              className="p-2 text-gray-600 hover:text-red-500 rounded-full hover:bg-gray-100"
-            >
-              <FiTrash2 className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-        <div className="mt-1 text-sm text-gray-500">
-          {formatFileSize(activeDocument?.size || 0)} • Uploaded {formatTimeAgo(new Date(activeDocument?.uploadedAt || ''))}
+          ))}
         </div>
       </div>
 
-      {/* Document preview */}
-      <div className="flex-1 overflow-auto p-4">
-        {activeDocument.previewUrls && activeDocument.previewUrls.length > 0 ? (
-          activeDocument.previewUrls.map((url, index) => (
-            <img
-              key={url}
-              src={url}
-              alt={`Page ${index + 1}`}
-              className="w-full mb-4 shadow-lg rounded-lg"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.onerror = null;
-                target.src = "https://ai-public.creatie.ai/gen_page/pdf_preview.png";
-              }}
-            />
-          ))
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <i className="fas fa-file-pdf text-4xl mb-4"></i>
-            <p>No preview available</p>
+      {/* Active document preview */}
+      {activeDocument ? (
+        <>
+          {/* Document header */}
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">{activeDocument.name}</h2>
+              <div className="flex space-x-2">
+                <button
+                  onClick={handleDownloadDocument}
+                  disabled={isDownloading}
+                  className="p-2 text-gray-600 hover:text-custom rounded-full hover:bg-gray-100"
+                >
+                  <FiDownload className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => removeDocument(activeDocument.id)}
+                  className="p-2 text-gray-600 hover:text-red-500 rounded-full hover:bg-gray-100"
+                >
+                  <FiTrash2 className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="mt-1 text-sm text-gray-500">
+              {formatFileSize(activeDocument?.size || 0)} • Uploaded {formatTimeAgo(new Date(activeDocument?.uploadedAt || ''))}
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* Document preview */}
+          <div className="flex-1 overflow-auto p-4">
+            {activeDocument.previewUrls && activeDocument.previewUrls.length > 0 ? (
+              activeDocument.previewUrls.map((url, index) => (
+                <img
+                  key={url}
+                  src={url}
+                  alt={`Page ${index + 1}`}
+                  className="w-full mb-4 shadow-lg rounded-lg"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.onerror = null;
+                    target.src = "/images/pdf_preview_fallback.png";
+                  }}
+                />
+              ))
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                <FiFile className="text-4xl mb-4" />
+                <p>No preview available</p>
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center">
+            <p>Select a document to preview</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

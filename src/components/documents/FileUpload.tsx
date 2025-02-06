@@ -62,6 +62,8 @@ export const FileUpload = () => {
           pageCount: data.document.pageCount || 1,
           previewUrls: data.document.previewUrls || []
         });
+
+        console.log('Document added successfully:', data.document.name);
       }
     } catch (error) {
       console.error('Upload error:', error);

@@ -1,5 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+interface Source {
+  document_id: string;
+  page: number;
+  start_line?: number;
+  end_line?: number;
+  preview?: string;
+  relevance_score: number;
+}
+
+interface ChatResponse {
+  answer: string;
+  sources: Source[];
+}
+
 export async function POST(req: NextRequest) {
   try {
     if (!process.env.BACKEND_URL) {
@@ -18,8 +32,8 @@ export async function POST(req: NextRequest) {
 
     // Format chat history to match backend expectations
     const formattedChatHistory = chat_history?.map((msg: any) => ({
-      content: msg.content || msg.text || '',  // Handle both content and text fields
-      sender: msg.sender || (msg.isUser ? 'user' : 'ai'),  // Convert isUser to sender type
+      sender: msg.sender || (msg.isUser ? 'user' : 'ai'),
+      content: msg.content || msg.text || '',
     }));
 
     const response = await fetch(`${process.env.BACKEND_URL}/api/chat`, {
@@ -30,7 +44,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         message,
         documentId: document_id,
-        chatHistory: formattedChatHistory
+        chatHistory: formattedChatHistory || []
       }),
     });
 
@@ -40,7 +54,7 @@ export async function POST(req: NextRequest) {
       throw new Error('Failed to get response from backend');
     }
 
-    const data = await response.json();
+    const data: ChatResponse = await response.json();
 
     return NextResponse.json({
       id: crypto.randomUUID(),

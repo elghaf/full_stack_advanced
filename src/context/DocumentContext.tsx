@@ -27,19 +27,21 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const [activeDocument, setActiveDocument] = useState<Document | null>(null);
 
   const addDocument = (document: Document) => {
-    console.log('Adding document:', document); // Debug log
+    console.log('Adding document:', document);
     setUploadedFiles(prev => {
       // Check if document already exists
       const exists = prev.some(file => file.id === document.id);
       if (exists) {
+        // Update existing document
         return prev.map(file => 
           file.id === document.id ? document : file
         );
       }
-      // Add new document at the beginning of the array
+      // Add new document at the beginning while preserving existing ones
       return [document, ...prev];
     });
-    setActiveDocument(document);
+    // Only set active document if there isn't one already
+    setActiveDocument(current => current || document);
   };
 
   const removeDocument = (documentId: string) => {
