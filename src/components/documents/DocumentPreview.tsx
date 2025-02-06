@@ -108,7 +108,7 @@ const DocumentPreview = () => {
   const handlePreviewError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     setError('Failed to load preview');
     const target = e.target as HTMLImageElement;
-    target.src = "https://ai-public.creatie.ai/gen_page/pdf_preview.png";
+    target.src = "/images/pdf_preview_fallback.png";
   };
 
   if (!activeDocument) {
@@ -160,13 +160,13 @@ const DocumentPreview = () => {
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 target.onerror = null;
-                target.src = "https://ai-public.creatie.ai/gen_page/pdf_preview.png";
+                target.src = "/images/pdf_preview_fallback.png";
               }}
             />
           ))
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <i className="fas fa-file-pdf text-4xl mb-4"></i>
+            <FiFile className="text-4xl mb-4" />
             <p>No preview available</p>
           </div>
         )}

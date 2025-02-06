@@ -10,7 +10,8 @@ import {
   FiList, 
   FiFileText,
   FiZap,
-  FiMessageSquare
+  FiMessageSquare,
+  FiUser
 } from 'react-icons/fi';
 
 interface Source {
@@ -95,9 +96,7 @@ const ChatInterface = () => {
             <div key={message.id} className={`flex items-start ${message.sender === 'user' ? 'justify-end' : ''}`}>
               {message.sender === 'ai' && (
                 <div className="flex-shrink-0">
-                  <div className="h-10 w-10 rounded-full bg-custom/10 flex items-center justify-center">
-                    <i className="fas fa-robot text-custom"></i>
-                  </div>
+                  <FiMessageSquare className="h-10 w-10 text-gray-500" />
                 </div>
               )}
               <div className={`${message.sender === 'user' ? 'mr-3' : 'ml-3'} ${
@@ -120,9 +119,7 @@ const ChatInterface = () => {
               </div>
               {message.sender === 'user' && (
                 <div className="flex-shrink-0">
-                  <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
-                    <i className="fas fa-user text-gray-600"></i>
-                  </div>
+                  <FiUser className="h-10 w-10 text-gray-500" />
                 </div>
               )}
             </div>

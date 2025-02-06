@@ -118,7 +118,7 @@ const DocumentPreview = () => {
   const handlePreviewError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     setError('Failed to load preview');
     const target = e.target as HTMLImageElement;
-    target.src = "https://ai-public.creatie.ai/gen_page/pdf_preview.png";
+    target.src = "/images/pdf_preview_fallback.png";
   };
 
   return (
