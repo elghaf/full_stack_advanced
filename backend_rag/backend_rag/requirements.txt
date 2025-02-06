@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-multipart
+python-docx
+PyPDF2
+pdf2image
+python-dotenv
+weaviate-client
+langchain
+langchain-openai
+langchain-weaviate
+
+weaviate-client==3.24.1
+python-dotenv==1.0.0 
