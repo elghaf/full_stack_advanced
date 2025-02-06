@@ -1,7 +1,7 @@
 // src/components/DocumentPreview.tsx
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useDocuments } from '@/context/DocumentContext';
 import { formatFileSize, formatTimeAgo } from '@/utils/formatters';
 import { 
@@ -29,6 +29,7 @@ const DocumentPreview = () => {
   const [showAllPages, setShowAllPages] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     if (activeDocument) {
@@ -60,26 +61,36 @@ const DocumentPreview = () => {
     }
   };
 
-  const handleDownloadDocument = async (documentId: string, fileName: string) => {
-      try {
-        // Remove the extra /api from the URL
-        const response = await fetch(`/api/documents/${documentId}/download`);  // Changed from /api/api/documents/...
-        if (!response.ok) throw new Error('Download failed');
-        
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      } catch (error) {
-        console.error('Error downloading document:', error);
-        alert('Failed to download document');
+  const handleDownloadDocument = useCallback(async () => {
+    if (!activeDocument?.id || isDownloading) return;
+
+    try {
+      setIsDownloading(true);
+      const response = await fetch(`/api/documents/${activeDocument.id}/download`);
+      
+      if (!response.ok) {
+        throw new Error('Download failed');
       }
-  };
+
+      // Get the blob from the response
+      const blob = await response.blob();
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = activeDocument.name;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading document:', error);
+      alert(error instanceof Error ? error.message : 'Failed to download document');
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [activeDocument?.id, isDownloading]);
 
   if (!uploadedFiles || uploadedFiles.length === 0) {
     return (
@@ -111,131 +122,49 @@ const DocumentPreview = () => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      {/* Source Preview Section */}
-      {activeDocument && (
-        <div className="border-t border-gray-200 p-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-900">Source Preview</h3>
-            <button 
-              className="text-xs text-gray-500 hover:text-custom flex items-center gap-1"
-              onClick={() => setShowAllPages(!showAllPages)}
+    <div className="flex-1 flex flex-col">
+      {/* Document header */}
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">{activeDocument?.name}</h2>
+          <div className="flex space-x-2">
+            <button
+              onClick={handleDownloadDocument}
+              disabled={isDownloading}
+              className="p-2 text-gray-600 hover:text-custom rounded-full hover:bg-gray-100"
             >
-              {showAllPages ? 'Show less' : 'View all pages'} <FiChevronRight className="w-4 h-4" />
+              <FiDownload className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => removeDocument(activeDocument?.id || '')}
+              className="p-2 text-gray-600 hover:text-red-500 rounded-full hover:bg-gray-100"
+            >
+              <FiTrash2 className="w-5 h-5" />
             </button>
           </div>
-
-          {error && (
-            <div className="mt-2 text-sm text-red-600">
-              {error}
-            </div>
-          )}
-
-          <div className={`mt-3 grid gap-4 ${showAllPages ? 'grid-cols-3' : 'flex overflow-x-auto'} pb-2`}>
-            {Array.from({ length: activeDocument.pageCount || 1 }).map((_, index) => (
-              <div key={index} className={`${showAllPages ? '' : 'flex-none'} w-32`}>
-                <div 
-                  className={`aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden cursor-pointer ${
-                    currentPage === index + 1 ? 'ring-2 ring-custom' : ''
-                  }`}
-                  onClick={() => setCurrentPage(index + 1)}
-                >
-                  {activeDocument.previewUrls?.[index] ? (
-                    <img
-                      src={`${process.env.NEXT_PUBLIC_BACKEND_URL}${activeDocument.previewUrls[index]}`}
-                      alt={`Page ${index + 1}`}
-                      className="w-full h-full object-cover"
-                      onError={handlePreviewError}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <FiFileText className="w-8 h-8 text-gray-400" />
-                    </div>
-                  )}
-                </div>
-                <p className="mt-1 text-xs text-gray-500 truncate">
-                  Page {index + 1}
-                </p>
-              </div>
-            ))}
-          </div>
         </div>
-      )}
+        <div className="mt-1 text-sm text-gray-500">
+          {formatFileSize(activeDocument?.size || 0)} • Uploaded {formatTimeAgo(new Date(activeDocument?.uploadedAt || ''))}
+        </div>
+      </div>
 
-      {/* Recent Documents Section */}
-      <h3 className="text-lg font-medium text-gray-900 mt-6">Recent Documents</h3>
-      <div className="mt-6 space-y-4">
-        {uploadedFiles.map((file) => (
-          <div 
-            key={file.id}
-            className={`bg-gray-50 p-4 rounded-lg hover:bg-gray-100 transition-colors ${
-              activeDocument?.id === file.id ? 'ring-2 ring-custom' : ''
-            }`}
-          >
-            <div className="flex items-center">
-              <div 
-                className="flex-1 flex items-center cursor-pointer"
-                onClick={() => setActiveDocument(file)}
-              >
-                <FiFileText className={`text-xl ${
-                  file.type.includes('pdf') ? 'text-red-500' :
-                  file.type.includes('doc') ? 'text-blue-500' :
-                  'text-gray-500'
-                }`} />
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {formatFileSize(file.size)} · {formatTimeAgo(new Date(file.uploadedAt))}
-                  </p>
-                </div>
-              </div>
-              
-              <Menu as="div" className="relative">
-                <Menu.Button className="p-2 hover:bg-gray-200 rounded-full">
-                  <FiMoreVertical className="w-5 h-5 text-gray-500" />
-                </Menu.Button>
-                <Transition
-                  as={Fragment}
-                  enter="transition ease-out duration-100"
-                  enterFrom="transform opacity-0 scale-95"
-                  enterTo="transform opacity-100 scale-100"
-                  leave="transition ease-in duration-75"
-                  leaveFrom="transform opacity-100 scale-100"
-                  leaveTo="transform opacity-0 scale-95"
-                >
-                  <Menu.Items className="absolute right-0 mt-2 w-48 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
-                    <Menu.Item>
-                      {({ active }) => (
-                        <button
-                          className={`${
-                            active ? 'bg-gray-100' : ''
-                          } group flex w-full items-center px-4 py-2 text-sm text-gray-700`}
-                          onClick={() => handleDownloadDocument(file.id, file.name)}
-                        >
-                          <FiDownload className="mr-3 h-5 w-5" />
-                          Download
-                        </button>
-                      )}
-                    </Menu.Item>
-                    <Menu.Item>
-                      {({ active }) => (
-                        <button
-                          className={`${
-                            active ? 'bg-gray-100' : ''
-                          } group flex w-full items-center px-4 py-2 text-sm text-red-600`}
-                          onClick={() => handleDeleteDocument(file.id)}
-                        >
-                          <FiTrash2 className="mr-3 h-5 w-5" />
-                          Delete
-                        </button>
-                      )}
-                    </Menu.Item>
-                  </Menu.Items>
-                </Transition>
-              </Menu>
-            </div>
+      {/* Document preview */}
+      <div className="flex-1 overflow-auto p-4">
+        {activeDocument && activeDocument.previewUrls && activeDocument.previewUrls.length > 0 ? (
+          activeDocument.previewUrls.map((url, index) => (
+            <img
+              key={url}
+              src={url}
+              alt={`Page ${index + 1}`}
+              className="w-full mb-4 shadow-lg rounded-lg"
+            />
+          ))
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-gray-500">
+            <FiFile className="w-16 h-16 mb-4" />
+            <p>No preview available</p>
           </div>
-        ))}
+        )}
       </div>
     </div>
   );

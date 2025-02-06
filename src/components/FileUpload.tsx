@@ -16,12 +16,25 @@ export const FileUpload = () => {
       setIsUploading(true);
       
       for (const file of Array.from(files)) {
-        if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        // Validate file size
+        if (file.size > 10 * 1024 * 1024) {
           throw new Error('File size must be less than 10MB');
+        }
+
+        // Validate file type
+        const allowedTypes = ['application/pdf', 'text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        if (!allowedTypes.includes(file.type)) {
+          throw new Error('File type not supported. Please upload PDF, TXT, or DOCX files.');
         }
 
         const formData = new FormData();
         formData.append('file', file);
+
+        console.log('Uploading file:', {
+          name: file.name,
+          type: file.type,
+          size: file.size
+        });
 
         const response = await fetch('/api/files', {
           method: 'POST',
@@ -29,9 +42,14 @@ export const FileUpload = () => {
         });
 
         const data = await response.json();
+        console.log('Response data:', data);
 
-        if (!data.success || !data.document) {
-          throw new Error(data.error || 'Upload failed');
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || data.detail || 'Upload failed');
+        }
+
+        if (!data.document) {
+          throw new Error('Invalid response from server');
         }
 
         // Add the document to context

@@ -10,8 +10,8 @@ import logging
 import shutil
 
 from utils.file_processing import FileProcessor
-from utils.rag_processor import RAGProcessor
-
+#from utils.rag_processor import RAGProcessor
+from utils.rag_app_weav import RAGProcessor
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ async def chat(request: ChatRequest):
         rag = RAGProcessor()
         
         # Get response from RAG using query parameter - properly await the async call
-        answer, sources = await rag.get_response(
+        answer, sources =  rag.get_response(
             query=request.message,
             document_id=request.documentId,
             chat_history=request.chatHistory

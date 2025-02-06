@@ -95,11 +95,9 @@ const ChatInterface = () => {
             <div key={message.id} className={`flex items-start ${message.sender === 'user' ? 'justify-end' : ''}`}>
               {message.sender === 'ai' && (
                 <div className="flex-shrink-0">
-                  <img
-                    className="h-10 w-10 rounded-full"
-                    src="https://creatie.ai/ai/api/search-image?query=A professional AI assistant avatar icon"
-                    alt="AI"
-                  />
+                  <div className="h-10 w-10 rounded-full bg-custom/10 flex items-center justify-center">
+                    <i className="fas fa-robot text-custom"></i>
+                  </div>
                 </div>
               )}
               <div className={`${message.sender === 'user' ? 'mr-3' : 'ml-3'} ${
@@ -114,7 +112,7 @@ const ChatInterface = () => {
                         className="p-2 bg-gray-50 rounded border border-gray-200 text-xs"
                       >
                         <div className="font-medium text-gray-700">Source {index + 1}:</div>
-                        <div className="text-gray-600">{source.text}</div>
+                        <div className="text-gray-600">Page {source.page}: {source.text}</div>
                       </div>
                     ))}
                   </div>
@@ -122,11 +120,9 @@ const ChatInterface = () => {
               </div>
               {message.sender === 'user' && (
                 <div className="flex-shrink-0">
-                  <img
-                    className="h-10 w-10 rounded-full"
-                    src="https://creatie.ai/ai/api/search-image?query=A professional headshot photo"
-                    alt="User"
-                  />
+                  <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
+                    <i className="fas fa-user text-gray-600"></i>
+                  </div>
                 </div>
               )}
             </div>

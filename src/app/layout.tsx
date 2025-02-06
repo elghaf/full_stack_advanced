@@ -45,11 +45,9 @@ const Navbar = () => (
       <div className="flex justify-between h-16">
         <div className="flex">
           <div className="flex-shrink-0 flex items-center">
-            <img
-              className="h-8 w-auto"
-              src="https://ai-public.creatie.ai/gen_page/logo_placeholder.png"
-              alt="Logo"
-            />
+            <div className="h-8 w-8 text-custom">
+              <i className="fas fa-book-reader text-2xl"></i>
+            </div>
           </div>
           <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
             <a
@@ -86,11 +84,9 @@ const Navbar = () => (
                 className="bg-white rounded-full flex text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-custom"
                 id="user-menu-button"
               >
-                <img
-                  className="h-8 w-8 rounded-full"
-                  src="https://creatie.ai/ai/api/search-image?query=A professional headshot photo of a young business person with a friendly smile, wearing smart casual attire, against a neutral background&width=32&height=32&orientation=squarish&flag=87367a5d-4bfa-44b3-90ba-791edc759e6a&flag=c7369f39-6882-4c3d-b7d2-e5ac618c1591"
-                  alt=""
-                />
+                <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
+                  <i className="fas fa-user text-gray-600"></i>
+                </div>
               </button>
             </div>
           </div>

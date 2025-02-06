@@ -17,12 +17,6 @@ import atexit
 from pdf2image import convert_from_path
 import PyPDF2
 from sentence_transformers import SentenceTransformer
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chat_models import ChatOpenAI
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationalRetrievalChain
-from weaviate.auth import AuthApiKey
 
 from weaviate.classes.query import Filter
 
@@ -125,7 +119,7 @@ class RAGProcessor:
 
             # Process based on file type
             if file_extension == '.pdf':
-                doc_info = self.process_pdf(file_path, document_id)
+                doc_info = self._process_pdf(file_path, document_id)
             elif file_extension == '.docx':
                 doc_info = self._process_docx(file_path, document_id)
             else:  # .txt
@@ -153,56 +147,51 @@ class RAGProcessor:
                 "vector_count": 0
             }
 
-    def process_pdf(self, file_path: Path, document_id: str) -> Dict[str, Any]:
-        """Process PDF document and prepare it for RAG operations"""
+    def _process_pdf(self, file_path: Path, document_id: str) -> Dict[str, Any]:
+        """Process PDF document and generate previews."""
         try:
-            logger.info(f"Processing PDF: {file_path}")
+            # Get page count
+            with open(file_path, 'rb') as file:
+                pdf = PyPDF2.PdfReader(file)
+                page_count = len(pdf.pages)
 
-            # Extract text from PDF
-            loader = PyPDFLoader(str(file_path))
-            pages = loader.load()
-            
-            # Split text into chunks
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=20)
-            chunks = text_splitter.split_documents(pages)
+            # Create document-specific preview directory
+            preview_dir = self.preview_dir / document_id
+            preview_dir.mkdir(parents=True, exist_ok=True)
 
-            # Initialize OpenAI embeddings
-            embeddings = OpenAIEmbeddings(openai_api_key=self.openai_api_key)
-
-            # Connect to Weaviate
-            client = weaviate.connect_to_weaviate_cloud(
-                cluster_url=self.cluster_url,
-                auth_credentials=AuthApiKey(api_key=self.api_key),
-                headers={'X-OpenAI-Api-Key': self.openai_api_key}
+            # Generate previews
+            images = convert_from_path(
+                str(file_path),
+                dpi=72,  # Lower DPI for previews
+                size=(None, 800)  # Max height of 800px
             )
+            preview_urls = []
+            for i, image in enumerate(images):
+                preview_path = preview_dir / f"page_{i + 1}.png"
+                image.save(str(preview_path), "PNG", optimize=True)
+                preview_urls.append(f"/api/previews/{document_id}/{i + 1}")
 
-            # Initialize vector store
-            vectorstore = WeaviateVectorStore(
-                client=client,
-                index_name=self.collection_name,
-                text_key="text",
-                embedding=embeddings,
-            )
-
-            # Add text chunks to vector store
-            text_meta_pair = [(chunk.page_content, {"document_id": document_id}) for chunk in chunks]
-            texts, meta = list(zip(*text_meta_pair))
-            vectorstore.add_texts(texts, meta)
-
-            logger.info(f"Successfully processed and stored PDF: {file_path}")
+            # Process for RAG if available
+            if hasattr(self, 'vectorstore'):
+                loader = PyPDFLoader(str(file_path))
+                pages = loader.load_and_split()
+                chunks = self.text_splitter.split_documents(pages)
+                self.vectorstore.add_documents(chunks)
+                vector_count = len(chunks)
+            else:
+                vector_count = 0
 
             return {
-                "status": "success",
-                "document_id": document_id,
-                "chunk_count": len(chunks)
+                "page_count": page_count,
+                "preview_urls": preview_urls,
+                "vector_count": vector_count
             }
-
         except Exception as e:
             logger.error(f"Error processing PDF: {str(e)}")
             return {
-                "status": "failed",
-                "error": str(e),
-                "document_id": document_id
+                "page_count": 0,
+                "preview_urls": [],
+                "vector_count": 0
             }
 
     def _process_docx(self, file_path: Path, document_id: str) -> Dict[str, Any]:
@@ -261,42 +250,78 @@ class RAGProcessor:
 
     def get_response(self, query: str, document_id: Optional[str] = None, chat_history: Optional[List[Dict]] = None) -> Tuple[str, List[str]]:
         try:
-            # Initialize OpenAI embeddings
-            embeddings = OpenAIEmbeddings(openai_api_key=self.openai_api_key)
+            # Load the SentenceTransformer model
+            model = SentenceTransformer("nomic-ai/modernbert-embed-base")
 
-            # Connect to Weaviate
-            client = weaviate.connect_to_weaviate_cloud(
-                cluster_url=self.cluster_url,
-                auth_credentials=AuthApiKey(api_key=self.api_key),
-                headers={'X-OpenAI-Api-Key': self.openai_api_key}
+            # Generate query embedding
+            query_embedding = model.encode(query)
+
+            # Prepare the query
+            logger.info(f"Query: {query}, Document ID: {document_id}")
+
+            # Get the collection
+            collection = self.client.collections.get(self.collection_name)
+
+            # Perform a similarity search using the query embedding
+            response = collection.query.near_vector(
+                near_vector=query_embedding,
+                limit=5
             )
 
-            # Initialize vector store
-            vectorstore = WeaviateVectorStore(
-                client=client,
-                index_name=self.collection_name,
-                text_key="text",
-                embedding=embeddings,
+            # Log the response
+            logger.info(f"Response: {response}")
+
+            # Extract the relevant documents
+            source_documents = []
+            for obj in response.objects:
+                source_documents.append({
+                    "document_id": obj.properties.get("document_id"),
+                    "page": obj.properties.get("page"),
+                    "text": obj.properties.get("text", "")[:200] + "..."
+                })
+
+            # Log the source documents
+            logger.info(f"Source documents: {source_documents}")
+
+            # Create prompt template
+            system_prompt = (
+                "You are an assistant for question-answering tasks. "
+                "Use the following pieces of retrieved context to answer "
+                "the question. If you don't know the answer, say that you "
+                "don't know. Use three sentences maximum and keep the "
+                "answer concise.\n\n{context}"
+            )
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", system_prompt),
+                ("human", "{input}"),
+            ])
+
+            # Create chain
+            llm = ChatOpenAI(
+                temperature=0,
+                model_name="gpt-4",
+                openai_api_key=self.openai_api_key
             )
 
-            # Initialize the conversational chain
-            llm = ChatOpenAI(temperature=0.7, model_name="gpt-3.5-turbo", openai_api_key=self.openai_api_key)
-            memory = ConversationBufferMemory(memory_key='chat_history', return_messages=True)
-            conversation_chain = ConversationalRetrievalChain.from_llm(
-                llm=llm,
-                chain_type="stuff",
-                retriever=vectorstore.as_retriever(),
-                memory=memory
-            )
+            # Create and run the chain
+            question_answer_chain = create_stuff_documents_chain(llm, prompt)
+            
+            # Format the context from source documents
+            context = "\n\n".join([doc["text"] for doc in source_documents])
+            
+            # Get the answer
+            result = question_answer_chain.invoke({
+                "input": query,
+                "context": context
+            })
 
-            # Query the conversation chain
-            result = conversation_chain.invoke({"question": query})
-            answer = result["answer"]
+            logger.info(f"Result type: {type(result)}, Result content: {result}")
 
-            # Log the answer
-            logger.info(f"Answer: {answer}")
-
-            return answer, []
+            if isinstance(result, dict) and "answer" in result:
+                return result["answer"], source_documents
+            else:
+                logger.error("Unexpected result format")
+                raise ValueError("Unexpected result format")
 
         except Exception as e:
             logger.error(f"Error in get_response: {str(e)}")

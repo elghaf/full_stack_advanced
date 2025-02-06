@@ -62,20 +62,13 @@ const DocumentPreview = () => {
   };
 
   const handleDownloadDocument = useCallback(async () => {
-    if (!activeDocument?.id || isDownloading) return;
+    if (!activeDocument?.id) return;
 
     try {
-      setIsDownloading(true);
       const response = await fetch(`/api/documents/${activeDocument.id}/download`);
-      
-      if (!response.ok) {
-        throw new Error('Download failed');
-      }
+      if (!response.ok) throw new Error('Download failed');
 
-      // Get the blob from the response
       const blob = await response.blob();
-      
-      // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -86,11 +79,8 @@ const DocumentPreview = () => {
       document.body.removeChild(a);
     } catch (error) {
       console.error('Error downloading document:', error);
-      alert(error instanceof Error ? error.message : 'Failed to download document');
-    } finally {
-      setIsDownloading(false);
     }
-  }, [activeDocument?.id, isDownloading]);
+  }, [activeDocument?.id]);
 
   if (!uploadedFiles || uploadedFiles.length === 0) {
     return (
@@ -121,12 +111,22 @@ const DocumentPreview = () => {
     target.src = "https://ai-public.creatie.ai/gen_page/pdf_preview.png";
   };
 
+  if (!activeDocument) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="text-center">
+          <p>No document selected</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col">
       {/* Document header */}
       <div className="p-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">{activeDocument?.name}</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{activeDocument.name}</h2>
           <div className="flex space-x-2">
             <button
               onClick={handleDownloadDocument}
@@ -136,7 +136,7 @@ const DocumentPreview = () => {
               <FiDownload className="w-5 h-5" />
             </button>
             <button
-              onClick={() => removeDocument(activeDocument?.id || '')}
+              onClick={() => removeDocument(activeDocument.id)}
               className="p-2 text-gray-600 hover:text-red-500 rounded-full hover:bg-gray-100"
             >
               <FiTrash2 className="w-5 h-5" />
@@ -150,18 +150,23 @@ const DocumentPreview = () => {
 
       {/* Document preview */}
       <div className="flex-1 overflow-auto p-4">
-        {activeDocument && activeDocument.previewUrls && activeDocument.previewUrls.length > 0 ? (
+        {activeDocument.previewUrls && activeDocument.previewUrls.length > 0 ? (
           activeDocument.previewUrls.map((url, index) => (
             <img
               key={url}
               src={url}
               alt={`Page ${index + 1}`}
               className="w-full mb-4 shadow-lg rounded-lg"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.onerror = null;
+                target.src = "https://ai-public.creatie.ai/gen_page/pdf_preview.png";
+              }}
             />
           ))
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <FiFile className="w-16 h-16 mb-4" />
+            <i className="fas fa-file-pdf text-4xl mb-4"></i>
             <p>No preview available</p>
           </div>
         )}
