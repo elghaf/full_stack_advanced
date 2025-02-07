@@ -1,7 +1,7 @@
 'use client'
 
-import FileUpload from './FileUpload';
-import DocumentList from './DocumentList';
+import {FileUpload} from './documents/FileUpload';
+import DocumentList from './documents/DocumentList';
 import { DocumentProvider } from '@/context/DocumentContext';
 
 const ClientWrapper = () => {

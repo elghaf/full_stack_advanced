@@ -37,14 +37,6 @@ class DocumentResponse(BaseModel):
     pageCount: int
     previewUrls: List[str]
 
-class Source(BaseModel):
-    document_id: str
-    page: int
-    start_line: Optional[int] = None
-    end_line: Optional[int] = None
-    preview: Optional[str] = None
-    relevance_score: float
-
 class ChatMessage(BaseModel):
     sender: str
     content: str
@@ -56,7 +48,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
-    sources: List[Source]
+    sources: List[str]
 
 @router.get("/health")
 async def health_check():
@@ -128,21 +120,27 @@ async def get_document(document_id: str):
 async def chat(request: ChatRequest):
     try:
         logger.info(f"Received chat message: {request.message}")
+        logger.info(f"Document context: {request.documentId if request.documentId else 'all documents'}")
         
-        # Get response from RAG
-        answer, sources = rag_processor.get_response(
+        if request.chatHistory:
+            logger.info(f"Chat history length: {len(request.chatHistory)}")
+        
+        # Initialize RAG processor
+        rag = RAGProcessor()
+        
+        # Get response from RAG using query parameter - properly await the async call
+        answer, sources =  rag.get_response(
             query=request.message,
             document_id=request.documentId,
             chat_history=request.chatHistory
         )
         
-        # Convert sources to proper format
-        formatted_sources = [Source(**source) for source in sources]
+        logger.info("Generated response successfully")
         
-        return ChatResponse(answer=answer, sources=formatted_sources)
+        return ChatResponse(answer=answer, sources=sources)
         
     except Exception as e:
-        logger.error(f"Error in chat: {str(e)}")
+        logger.error(f"Error in chat: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error processing chat: {str(e)}"
@@ -282,7 +280,7 @@ async def upload_file(file: UploadFile = File(...)):
         
         # Process document with RAG
         try:
-            doc_info = rag_processor.process_document(save_path, document_id)
+            doc_info = rag_processor.process_document(save_path, file.filename, document_id)
             logger.info(f"Document processed successfully: {doc_info}")
         except Exception as e:
             logger.error(f"Error processing document: {str(e)}")

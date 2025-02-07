@@ -1,6 +1,6 @@
 import {FileUpload} from "@/components/documents/FileUpload";
 import DocumentPreview from "@/components/documents/DocumentPreview";
-import ChatInterface from "@/components/chat_features/ChatInterface";
+import ChatInterface from "@/components/chat/ChatInterface";
 
 export default function Home() {
   return (
@@ -24,8 +24,12 @@ const RecentDocuments = () => (
       <div className="mt-3 flex space-x-2 overflow-x-auto pb-2">
         {[1, 2, 3].map((page) => (
           <div key={page} className="flex-none w-32">
-            <div className="aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
-              <i className="fas fa-file-pdf text-4xl text-gray-400"></i>
+            <div className="aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden">
+              <img
+                src="https://ai-public.creatie.ai/gen_page/pdf_preview.png"
+                alt="Document preview"
+                className="w-full h-full object-cover"
+              />
             </div>
             <p className="mt-1 text-xs text-gray-500 truncate">Page {page}</p>
           </div>

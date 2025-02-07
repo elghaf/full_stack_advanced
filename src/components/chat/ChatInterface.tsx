@@ -10,8 +10,7 @@ import {
   FiList, 
   FiFileText,
   FiZap,
-  FiMessageSquare,
-  FiUser
+  FiMessageSquare
 } from 'react-icons/fi';
 
 interface Source {
@@ -96,7 +95,11 @@ const ChatInterface = () => {
             <div key={message.id} className={`flex items-start ${message.sender === 'user' ? 'justify-end' : ''}`}>
               {message.sender === 'ai' && (
                 <div className="flex-shrink-0">
-                  <FiMessageSquare className="h-10 w-10 text-gray-500" />
+                  <img
+                    className="h-10 w-10 rounded-full"
+                    src="https://creatie.ai/ai/api/search-image?query=A professional AI assistant avatar icon"
+                    alt="AI"
+                  />
                 </div>
               )}
               <div className={`${message.sender === 'user' ? 'mr-3' : 'ml-3'} ${
@@ -111,7 +114,7 @@ const ChatInterface = () => {
                         className="p-2 bg-gray-50 rounded border border-gray-200 text-xs"
                       >
                         <div className="font-medium text-gray-700">Source {index + 1}:</div>
-                        <div className="text-gray-600">Page {source.page}: {source.text}</div>
+                        <div className="text-gray-600">{source.text}</div>
                       </div>
                     ))}
                   </div>
@@ -119,7 +122,11 @@ const ChatInterface = () => {
               </div>
               {message.sender === 'user' && (
                 <div className="flex-shrink-0">
-                  <FiUser className="h-10 w-10 text-gray-500" />
+                  <img
+                    className="h-10 w-10 rounded-full"
+                    src="https://creatie.ai/ai/api/search-image?query=A professional headshot photo"
+                    alt="User"
+                  />
                 </div>
               )}
             </div>
