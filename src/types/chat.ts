@@ -24,6 +24,12 @@ export interface ChatMessage {
   id: string;
   content: string;
   sender: 'user' | 'ai';
-  timestamp: string;
-  sources: Source[];
+  timestamp?: string;
+  sources?: {
+    documentId: string;
+    fileName: string;
+    page: number;
+    relevanceScore: number;
+    text: string;
+  }[];
 } 

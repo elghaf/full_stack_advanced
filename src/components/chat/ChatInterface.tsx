@@ -13,20 +13,52 @@ import {
   FiUser,
   FiCpu
 } from 'react-icons/fi';
+import { format } from 'date-fns';
 
 interface Source {
   document_id: string;
+  file_name: string;
   page: number;
   text: string;
+  relevance_score: number;
 }
 
 interface ChatMessage {
   id: string;
   content: string;
   sender: 'user' | 'ai';
-  timestamp: Date;
+  timestamp: string;
   sources?: Source[];
 }
+
+const SourceDisplay = ({ sources }: { sources: Source[] }) => (
+  <div className="mt-4 space-y-3">
+    <div className="text-sm font-medium text-gray-500">Sources:</div>
+    <div className="space-y-2">
+      {sources.map((source, index) => (
+        <div key={index} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-medium text-gray-400">Source {index + 1}</span>
+              <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
+                Page {source.page}
+              </span>
+              <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">
+                Score: {source.relevance_score ? (source.relevance_score * 100).toFixed(0) : 'N/A'}%
+              </span>
+            </div>
+            <div className="text-xs text-gray-400 truncate max-w-[200px]">
+              {source.file_name || 'Unnamed Document'}
+            </div>
+          </div>
+          <div className="text-sm text-gray-600 line-clamp-3">
+            {source.text?.replace(/\n+\s*/g, ' ').trim()}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
 const ChatInterface = () => {
   const { activeDocument, documents } = useDocuments();
@@ -35,7 +67,7 @@ const ChatInterface = () => {
       id: '1',
       content: "Hello! I'm here to help you analyze your documents. You can upload files and ask me questions about their content.",
       sender: 'ai',
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     },
   ]);
   const [inputMessage, setInputMessage] = useState('');
@@ -49,7 +81,7 @@ const ChatInterface = () => {
       id: crypto.randomUUID(),
       content: inputMessage,
       sender: 'user',
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -111,7 +143,7 @@ const ChatInterface = () => {
         id: data.id,
         content: data.content,
         sender: 'ai',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         sources: data.sources
       };
 
@@ -121,11 +153,23 @@ const ChatInterface = () => {
       
     } catch (error) {
       console.group('❌ Error Details');
-      console.error({
-        type: error.name,
-        message: error.message,
-        timestamp: new Date().toLocaleString()
-      });
+      
+      // Check if error is an instance of Error and has the expected properties
+      if (error instanceof Error) {
+        console.error({
+          type: error.name,
+          message: error.message,
+          timestamp: new Date().toLocaleString()
+        });
+      } else {
+        // Handle unexpected error types
+        console.error({
+          type: 'Unknown Error',
+          message: typeof error === 'string' ? error : 'An unexpected error occurred',
+          timestamp: new Date().toLocaleString()
+        });
+      }
+      
       console.groupEnd();
     } finally {
       setIsLoading(false);
@@ -137,43 +181,19 @@ const ChatInterface = () => {
     <div className="w-3/5 flex flex-col">
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="space-y-6">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              {message.sender === 'ai' && (
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
-                  <FiCpu className="w-5 h-5 text-blue-600" />
-                </div>
-              )}
-              <div
-                className={`max-w-[80%] rounded-lg p-3 ${
-                  message.sender === 'user'
-                    ? 'bg-custom text-white'
-                    : 'bg-gray-100 text-gray-900'
-                }`}
-              >
-                <p>{message.content}</p>
-                {message.sources && (
-                  <div className="mt-2 space-y-2">
-                    {message.sources.map((source, index) => (
-                      <div 
-                        key={index}
-                        className="p-2 bg-gray-50 rounded border border-gray-200 text-xs"
-                      >
-                        <div className="font-medium text-gray-700">Source {index + 1}:</div>
-                        <div className="text-gray-600">{source.text}</div>
-                      </div>
-                    ))}
+          {messages.map((message, index) => (
+            <div key={index} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[80%] ${message.sender === 'user' ? 'bg-custom text-white' : 'bg-gray-100'} rounded-lg p-4`}>
+                <div className="text-sm">{message.content}</div>
+                {message.sender === 'ai' && message.sources && (
+                  <SourceDisplay sources={message.sources} />
+                )}
+                {message.sender === 'ai' && message.timestamp && (
+                  <div className="mt-2 text-xs text-gray-400">
+                    {format(new Date(message.timestamp), 'MMM d, yyyy HH:mm:ss')}
                   </div>
                 )}
               </div>
-              {message.sender === 'user' && (
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center ml-3">
-                  <FiUser className="w-5 h-5 text-gray-600" />
-                </div>
-              )}
             </div>
           ))}
         </div>

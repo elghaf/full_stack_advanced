@@ -60,7 +60,9 @@ export const FileUpload = () => {
           size: data.document.size,
           uploadedAt: data.document.uploadedAt,
           pageCount: data.document.pageCount || 1,
-          previewUrls: data.document.previewUrls || []
+          previewUrls: data.document.previewUrls || [],
+          previewZones: data.document.previewZones || [],
+          sourceInfo: data.document.sourceInfo || []
         });
       }
     } catch (error) {

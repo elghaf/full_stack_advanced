@@ -10,13 +10,22 @@ interface Document {
   uploadedAt: number;
   pageCount: number;
   previewZones: any[];
+  previewUrls: string[];
+  sourceInfo?: {
+    documentId: string;
+    fileName: string;
+    page: number;
+    relevanceScore: number;
+    text: string;
+  }[];
 }
 
-interface DocumentContextType {
+export interface DocumentContextType {
   documents: Document[];
   activeDocument: Document | null;
   setDocuments: (documents: Document[]) => void;
   setActiveDocument: (document: Document | null) => void;
+  addDocument: (document: Document) => void;
 }
 
 const DocumentContext = createContext<DocumentContextType | undefined>(undefined);
