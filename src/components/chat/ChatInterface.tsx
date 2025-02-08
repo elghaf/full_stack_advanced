@@ -2,15 +2,16 @@
 
 import { useState } from 'react';
 import { useDocuments } from '@/context/DocumentContext';
-import { ChatMessage } from '@/types/file';
 import { 
   FiSend, 
   FiPaperclip, 
-  FiSearch, 
+  FiSearch,
   FiList, 
   FiFileText,
   FiZap,
-  FiMessageSquare
+  FiMessageSquare,
+  FiUser,
+  FiCpu
 } from 'react-icons/fi';
 
 interface Source {
@@ -28,7 +29,7 @@ interface ChatMessage {
 }
 
 const ChatInterface = () => {
-  const { activeDocument } = useDocuments();
+  const { activeDocument, documents } = useDocuments();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
@@ -56,6 +57,8 @@ const ChatInterface = () => {
     setIsLoading(true);
 
     try {
+      console.group('🌐 Chat API Interaction');
+      
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -71,6 +74,39 @@ const ChatInterface = () => {
 
       const data = await response.json();
       
+      // Log API Response
+      console.group('📥 API Response Details');
+      console.table({
+        status: response.status,
+        messageId: data.id,
+        timestamp: new Date().toLocaleString(),
+        contentLength: data.content.length
+      });
+
+      // Log Sources
+      if (data.sources && data.sources.length > 0) {
+        console.group('📚 Source Documents');
+        data.sources.forEach((source, index) => {
+          console.log(`Source ${index + 1}:`, {
+            documentId: source.document_id,
+            fileName: source.file_name,
+            page: source.page,
+            relevanceScore: source.relevance_score,
+            text: source.text.substring(0, 100) + (source.text.length > 100 ? '...' : '')
+          });
+        });
+        console.groupEnd();
+      }
+
+      // Log AI Response
+      console.group('🤖 AI Response');
+      console.log({
+        content: data.content,
+        sourceCount: data.sources?.length || 0,
+        timestamp: new Date().toLocaleString()
+      });
+      console.groupEnd();
+      
       const botMessage: ChatMessage = {
         id: data.id,
         content: data.content,
@@ -80,32 +116,45 @@ const ChatInterface = () => {
       };
 
       setMessages(prev => [...prev, botMessage]);
+      console.groupEnd(); // API Response Details
+      console.groupEnd(); // Chat API Interaction
+      
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.group('❌ Error Details');
+      console.error({
+        type: error.name,
+        message: error.message,
+        timestamp: new Date().toLocaleString()
+      });
+      console.groupEnd();
     } finally {
       setIsLoading(false);
     }
   };
+
 
   return (
     <div className="w-3/5 flex flex-col">
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="space-y-6">
           {messages.map((message) => (
-            <div key={message.id} className={`flex items-start ${message.sender === 'user' ? 'justify-end' : ''}`}>
+            <div
+              key={message.id}
+              className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
               {message.sender === 'ai' && (
-                <div className="flex-shrink-0">
-                  <img
-                    className="h-10 w-10 rounded-full"
-                    src="https://creatie.ai/ai/api/search-image?query=A professional AI assistant avatar icon"
-                    alt="AI"
-                  />
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                  <FiCpu className="w-5 h-5 text-blue-600" />
                 </div>
               )}
-              <div className={`${message.sender === 'user' ? 'mr-3' : 'ml-3'} ${
-                message.sender === 'user' ? 'bg-custom text-white' : 'bg-gray-100'
-              } rounded-lg px-4 py-3 max-w-3xl`}>
-                <p className="text-sm">{message.content}</p>
+              <div
+                className={`max-w-[80%] rounded-lg p-3 ${
+                  message.sender === 'user'
+                    ? 'bg-custom text-white'
+                    : 'bg-gray-100 text-gray-900'
+                }`}
+              >
+                <p>{message.content}</p>
                 {message.sources && (
                   <div className="mt-2 space-y-2">
                     {message.sources.map((source, index) => (
@@ -121,12 +170,8 @@ const ChatInterface = () => {
                 )}
               </div>
               {message.sender === 'user' && (
-                <div className="flex-shrink-0">
-                  <img
-                    className="h-10 w-10 rounded-full"
-                    src="https://creatie.ai/ai/api/search-image?query=A professional headshot photo"
-                    alt="User"
-                  />
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center ml-3">
+                  <FiUser className="w-5 h-5 text-gray-600" />
                 </div>
               )}
             </div>

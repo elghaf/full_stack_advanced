@@ -8,10 +8,13 @@ from pydantic import BaseModel
 import os
 import logging
 import shutil
+import json
+import PyPDF2
 
 from utils.file_processing import FileProcessor
-#from utils.rag_processor import RAGProcessor
 from utils.rag_app_weav import RAGProcessor
+from app.models import Source
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,7 +51,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
-    sources: List[str]
+    sources: List[Source]
 
 @router.get("/health")
 async def health_check():
@@ -118,32 +121,42 @@ async def get_document(document_id: str):
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
+    """Chat with the RAG system"""
     try:
-        logger.info(f"Received chat message: {request.message}")
-        logger.info(f"Document context: {request.documentId if request.documentId else 'all documents'}")
-        
-        if request.chatHistory:
-            logger.info(f"Chat history length: {len(request.chatHistory)}")
+        logger.info(f"Received chat request: {request.message}")
         
         # Initialize RAG processor
-        rag = RAGProcessor()
+        rag_processor = RAGProcessor()
         
-        # Get response from RAG using query parameter - properly await the async call
-        answer, sources =  rag.get_response(
+        # Get response
+        answer, sources = rag_processor.get_response(
             query=request.message,
-            document_id=request.documentId,
-            chat_history=request.chatHistory
+            document_id=request.documentId
         )
         
         logger.info("Generated response successfully")
         
-        return ChatResponse(answer=answer, sources=sources)
+        # Convert sources to match the Source model
+        formatted_sources = [
+            Source(
+                document_id=source["document_id"],
+                file_name=source["file_name"],
+                page=source["page"],
+                text=source["text"],
+                relevance_score=source["relevance_score"],
+                start_line=source.get("start_line"),
+                end_line=source.get("end_line"),
+                section_title=source.get("section_title")
+            ) for source in sources
+        ]
+        
+        return ChatResponse(answer=answer, sources=formatted_sources)
         
     except Exception as e:
         logger.error(f"Error in chat: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error processing chat: {str(e)}"
+            detail=f"Error processing chat request: {str(e)}"
         )
 
 @router.delete("/documents/{document_id}")
@@ -248,43 +261,27 @@ async def download_document(document_id: str):
 
 @router.post("/files")
 async def upload_file(file: UploadFile = File(...)):
+    """Upload and process a document"""
     try:
+        # Generate unique ID for the document
         document_id = str(uuid.uuid4())
-        logger.info(f"Processing file upload with ID: {document_id}")
         
-        # Validate file type
-        allowed_types = ['application/pdf', 'text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
-        if file.content_type not in allowed_types:
-            raise HTTPException(
-                status_code=400,
-                detail="File type not supported. Allowed types: PDF, TXT, DOCX"
-            )
+        # Create uploads directory if it doesn't exist
+        uploads_dir = Path("uploads")
+        uploads_dir.mkdir(exist_ok=True)
         
-        # Save file with document ID as name
-        file_extension = Path(file.filename).suffix.lower()
-        save_path = UPLOAD_DIR / f"{document_id}{file_extension}"
+        # Save file with original extension
+        file_extension = Path(file.filename).suffix
+        file_path = uploads_dir / f"{document_id}{file_extension}"
         
-        logger.info(f"Saving file to: {save_path}")
-        
-        # Save the file
-        content = await file.read()
-        with open(save_path, "wb") as f:
-            f.write(content)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
             
-        file_size = os.path.getsize(save_path)
-        logger.info(f"File saved successfully. Size: {file_size} bytes")
+        # Initialize RAG processor and process document
+        process_result = rag_processor.process_document(file_path, document_id)
         
-        # Store the original filename mapping
-        with open(UPLOAD_DIR / "filenames.txt", "a") as f:
-            f.write(f"{document_id}{file_extension}|{file.filename}\n")
-        
-        # Process document with RAG
-        try:
-            doc_info = rag_processor.process_document(save_path, file.filename, document_id)
-            logger.info(f"Document processed successfully: {doc_info}")
-        except Exception as e:
-            logger.error(f"Error processing document: {str(e)}")
-            doc_info = {}
+        # Get file stats
+        stats = file_path.stat()
         
         return {
             "success": True,
@@ -292,20 +289,18 @@ async def upload_file(file: UploadFile = File(...)):
                 "id": document_id,
                 "name": file.filename,
                 "type": file.content_type,
-                "size": file_size,
-                "uploadedAt": datetime.now().isoformat(),
-                "pageCount": doc_info.get("page_count", 1),
-                "previewUrls": doc_info.get("preview_urls", [])
+                "size": stats.st_size,
+                "uploadedAt": stats.st_mtime,
+                "pageCount": process_result.get("page_count", 1),
+                "previewZones": process_result.get("preview_zones", []),
+                "chunkCount": process_result.get("chunk_count", 0)
             }
         }
-        
-    except HTTPException:
-        raise
+
     except Exception as e:
-        logger.error(f"Upload error: {str(e)}")
-        return JSONResponse(
+        raise HTTPException(
             status_code=500,
-            content={"success": False, "error": str(e)}
+            detail=f"Error uploading file: {str(e)}"
         )
 
 @router.get("/debug/files")
@@ -329,4 +324,107 @@ async def list_files():
         return JSONResponse(
             status_code=500,
             content={"error": str(e)}
+        )
+
+@router.get("/documents/{document_id}/preview")
+async def get_document_preview(document_id: str):
+    """Get preview zones for a document"""
+    try:
+        # Try to load saved preview
+        preview_file = Path(f"uploads/{document_id}_preview.json")
+        if preview_file.exists():
+            with open(preview_file, 'r', encoding='utf-8') as f:
+                preview_data = json.load(f)
+                return preview_data
+        
+        # If no preview exists, return empty zones
+        return {
+            "zones": [],
+            "error": "No preview available for this document"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error getting document preview: {str(e)}"
+        )
+
+@router.get("/documents")
+async def list_documents():
+    """List all documents"""
+    try:
+        print("GET /api/documents - Starting request")
+        uploads_dir = Path("uploads")
+        
+        if not uploads_dir.exists():
+            print(f"Uploads directory does not exist: {uploads_dir}")
+            return {"documents": []}
+
+        documents = []
+        print(f"Scanning directory: {uploads_dir}")
+        
+        for file_path in uploads_dir.glob("*"):
+            print(f"Found file: {file_path}")
+            
+            # Skip preview JSON files and non-files
+            if not file_path.is_file() or file_path.suffix == '.json':
+                print(f"Skipping file: {file_path}")
+                continue
+                
+            try:
+                # Get file stats
+                stats = file_path.stat()
+                print(f"File stats for {file_path.name}: size={stats.st_size}, mtime={stats.st_mtime}")
+                
+                # Get preview data if exists
+                preview_file = Path(f"uploads/{file_path.stem}_preview.json")
+                preview_data = None
+                if preview_file.exists():
+                    print(f"Found preview file: {preview_file}")
+                    with open(preview_file, 'r', encoding='utf-8') as f:
+                        preview_data = json.load(f)
+                else:
+                    print(f"No preview file found for: {file_path.name}")
+
+                # Create document info
+                doc_info = {
+                    "id": file_path.stem,
+                    "name": file_path.name,
+                    "type": file_path.suffix.lower()[1:],
+                    "size": stats.st_size,
+                    "uploadedAt": stats.st_mtime,
+                    "pageCount": 1,
+                    "previewZones": preview_data.get("zones", []) if preview_data else []
+                }
+                
+                print(f"Created doc_info for {file_path.name}: {doc_info}")
+                
+                # Get page count for PDFs
+                if file_path.suffix.lower() == '.pdf':
+                    try:
+                        with open(file_path, 'rb') as pdf_file:
+                            pdf_reader = PyPDF2.PdfReader(pdf_file)
+                            doc_info["pageCount"] = len(pdf_reader.pages)
+                            print(f"PDF page count for {file_path.name}: {doc_info['pageCount']}")
+                    except Exception as e:
+                        print(f"Error reading PDF page count for {file_path.name}: {str(e)}")
+
+                documents.append(doc_info)
+                
+            except Exception as e:
+                print(f"Error processing file {file_path}: {str(e)}")
+                continue
+
+        # Sort by upload time, newest first
+        documents.sort(key=lambda x: x["uploadedAt"], reverse=True)
+        
+        print(f"Returning {len(documents)} documents")
+        return {"documents": documents}
+
+    except Exception as e:
+        print(f"Error in list_documents: {str(e)}")
+        logger.error(f"Error listing documents: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error listing documents: {str(e)}"
         ) 

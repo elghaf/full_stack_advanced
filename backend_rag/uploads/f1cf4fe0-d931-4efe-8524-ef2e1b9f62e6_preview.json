@@ -1,0 +1,39 @@
+{
+  "zones": [
+    {
+      "page": 1,
+      "startLine": 1,
+      "endLine": 151,
+      "text": "Je\n \nm'appelle\n \nAyoub\n \nEl\n \nGhafraoui\n,\n \ndéveloppeur\n \nspécialisé\n \nen\n \nintelligence\n \nartificielle,\n \nj’ai\n \nune\n \ngrand\n \nexpertise\n \ndans\n \nle\n \ndeveloppement\n \navec\n \npython.\n \nJe\n \nsuis\n \ntitulaire\n \nde\n \ndeux\n \nmasters,\n \nl'un\n \nen\n \nIntelligence\n \nArtificielle\n \net\n \nMachine\n \nLearning\n \nde\n \nl'EHTP\n \nà\n \nCasablanca,\n \net\n \nl'autre\n \nen\n \nComputer\n \nVision\n \nde\n \nl'Université\n \nde\n \nLorraine\n \nà\n \nMetz.\n \nAu\n \nfil\n \ndes\n \nannées,\n \nj'ai\n \nacquis\n \nune\n \nexpertise\n \nsolide\n \nen\n \ndéveloppement\n \nd'applications\n \nintelligentes,\n \ntraitement\n \nd'images,\n \nvision\n \npar\n \nordinateur,\n \net\n \nmodèles\n \nde\n \ndeep\n \nlearning.\n \nMon\n \nexpérience\n \nprofessionnelle\n \net\n \nvariée\n ",
+      "sectionTitle": "Main Content"
+    },
+    {
+      "page": 1,
+      "startLine": 152,
+      "endLine": 157,
+      "text": " \n●\n \nChez\n ",
+      "sectionTitle": ":"
+    },
+    {
+      "page": 1,
+      "startLine": 158,
+      "endLine": 190,
+      "text": " \nGroup\n \nFrance\n,\n \nj’ai\n \ndéveloppé\n \ndes\n \nfonctionnalités\n \nlogicielles\n \npour\n \noptimiser\n \nla\n \ngestion\n \nlogistique,\n \nBack-End\n \navec\n \nDjango\n ",
+      "sectionTitle": "KLS"
+    },
+    {
+      "page": 1,
+      "startLine": 191,
+      "endLine": 384,
+      "text": " \nDéveloppement\n \net\n \nimplémentation\n \nde\n \nnouvelles\n \nfonctionnalités\n \npour\n \nles\n \napplications\n \nclients.\n \nDéveloppé\n \nune\n \nfonctionnalité\n \ndans\n \nle\n \nflux\n \nde\n \ntravail\n \nd'entrepôt\n \npermettant\n \naux\n \nopérateurs\n \nde\n \ncapturer\n \net\n \nstocker\n \ndes\n \nimages\n \navant\n \nl'expédition\n \nd'un\n \ncolis,\n \navec\n \nintégration\n \ndes\n \nimages\n \ndans\n \nla\n \nbase\n \nde\n \ndonnées\n \n(tâche\n \nmobile\n \n+\n \nweb).\n \n●\n \nEn\n \ntant\n \nque\n \nfreelance\n \nsur\n \nUpwork\n,\n \nj'ai\n \ntravailler\n \nsur\n \ndes\n \nsolution\n \ncomme\n \nun\n \nsystème\n \nd'alarme\n \nSaaS\n \nbasé\n \nsur\n \nl'IA\n,\n \navec\n \nun\n \ntableau\n \nde\n \nbord\n \nintuitif\n \ndéveloppé\n \nsous\n \nNext.js\n \net\n \ndes\n \nprompts\n \nintelligents\n \npour\n \nune\n \npersonnalisation\n \navancée.\n \n●\n \nDans\n \nle\n \ndomaine\n \ntransoport,\n \nj'ai\n \ndéveloppé\n \ndes\n \npipelines\n \nde\n \nmachine\n \nlearning\n \navec\n ",
+      "sectionTitle": ":"
+    },
+    {
+      "page": 1,
+      "startLine": 385,
+      "endLine": 503,
+      "text": " \nSageMaker\n \net\n \nPyTorch\n,\n \npermettant\n \nde\n \nextractrer\n \nles\n \nplate\n \nde\n \nmatriculation\n \nen\n \ntamp\n \nreal,\n \nya\n \nune\n \npartie\n \nde\n \ncollection\n \ndes\n \nimages\n \n(plate\n \nmarocain)\n \net\n \nlancer\n \nun\n \ntraining\n \nmodel\n \navec\n \nyolo\n \nqui\n \npermet\n \nd’extracter\n \nles\n \nnumero\n \nde\n \nvoiture\n \nen\n \ntemp\n \nreal\n \navec\n \nles\n \ninformation\n \nde\n \nvoiture\n \n(color,\n \ntype,\n \n..)\n \net\n \ncreation\n \nd’un\n \nrapport.\n \n \n \n \n \n \n \n \n \n \n \n \n \n \n ",
+      "sectionTitle": "AWS"
+    }
+  ]
+}

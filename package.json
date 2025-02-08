@@ -15,6 +15,7 @@
     "@headlessui/react": "^2.2.0",
     "axios": "^1.7.9",
     "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
     "filepond": "^4.32.7",
     "filepond-plugin-file-validate-size": "^2.2.8",
     "filepond-plugin-image-preview": "^4.6.12",

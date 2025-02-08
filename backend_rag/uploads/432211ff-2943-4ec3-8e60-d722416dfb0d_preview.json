@@ -1,0 +1,137 @@
+{
+  "zones": [
+    {
+      "page": 1,
+      "startLine": 5,
+      "endLine": 6,
+      "text": "0636016640",
+      "sectionTitle": "MARRAKECH"
+    },
+    {
+      "page": 1,
+      "startLine": 7,
+      "endLine": 8,
+      "text": "05/02/2025",
+      "sectionTitle": "Date du devis :"
+    },
+    {
+      "page": 1,
+      "startLine": 12,
+      "endLine": 14,
+      "text": "Description\nUnité",
+      "sectionTitle": "PH RDC"
+    },
+    {
+      "page": 1,
+      "startLine": 15,
+      "endLine": 16,
+      "text": "ML/Qté",
+      "sectionTitle": "NBRE"
+    },
+    {
+      "page": 1,
+      "startLine": 17,
+      "endLine": 18,
+      "text": "Total HT",
+      "sectionTitle": "P.U"
+    },
+    {
+      "page": 1,
+      "startLine": 21,
+      "endLine": 25,
+      "text": "2\n1.20\n26.00\n62.40",
+      "sectionTitle": "ML"
+    },
+    {
+      "page": 1,
+      "startLine": 27,
+      "endLine": 31,
+      "text": "2\n1.30\n26.00\n67.60",
+      "sectionTitle": "ML"
+    },
+    {
+      "page": 1,
+      "startLine": 33,
+      "endLine": 37,
+      "text": "1\n5.20\n30.00\n156.00",
+      "sectionTitle": "ML"
+    },
+    {
+      "page": 1,
+      "startLine": 39,
+      "endLine": 43,
+      "text": "4\n8.00\n51.00\n1 632.00",
+      "sectionTitle": "ML"
+    },
+    {
+      "page": 1,
+      "startLine": 46,
+      "endLine": 50,
+      "text": "1\n164.00\n3.90\n639.60",
+      "sectionTitle": "U"
+    },
+    {
+      "page": 1,
+      "startLine": 52,
+      "endLine": 56,
+      "text": "0\n350.00\n4.00\n0.00",
+      "sectionTitle": "U"
+    },
+    {
+      "page": 1,
+      "startLine": 58,
+      "endLine": 62,
+      "text": "1\n500.00\n6.00\n3 000.00",
+      "sectionTitle": "U"
+    },
+    {
+      "page": 1,
+      "startLine": 65,
+      "endLine": 69,
+      "text": "1\n20.00\n190.00\n3 800.00",
+      "sectionTitle": "U"
+    },
+    {
+      "page": 1,
+      "startLine": 72,
+      "endLine": 76,
+      "text": "1\n500.00\n5.00\n2 500.00",
+      "sectionTitle": "U"
+    },
+    {
+      "page": 1,
+      "startLine": 78,
+      "endLine": 82,
+      "text": "1\n500.00\n8.20\n4 100.00",
+      "sectionTitle": "U"
+    },
+    {
+      "page": 1,
+      "startLine": 84,
+      "endLine": 88,
+      "text": "1\n200.00\n7.00\n1 400.00",
+      "sectionTitle": "U"
+    },
+    {
+      "page": 1,
+      "startLine": 89,
+      "endLine": 95,
+      "text": "Toute modification apportée aux\nplans BA initialement fournis,\nentraine automatiquement la\nmodification de ce devis.\nValidité du devis : 1 mois\nTotal    H.T",
+      "sectionTitle": "NB:"
+    },
+    {
+      "page": 1,
+      "startLine": 98,
+      "endLine": 99,
+      "text": "Total    TTC",
+      "sectionTitle": "3 471.52 DH"
+    },
+    {
+      "page": 1,
+      "startLine": 101,
+      "endLine": 108,
+      "text": " Douar Ait Toumart Habil, Cercle El Bour, Route de Safi, Km 14 -40000 Marrakech\nCommercial: KHALED\nTél: 06 66 24 80 94\nTél: 05 24 01 33 34 Fax : 05 24 01 33 29 E-mail : carriprefa@gmail.com\nDate: 05/02/2025 08:05\nPage 1/1\n",
+      "sectionTitle": "CARRIPREFA"
+    }
+  ]
+}

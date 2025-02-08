@@ -1,11 +1,20 @@
 export interface UploadedFile {
   id: string;
   name: string;
-  type: string;
+  type: "pdf" | "docx" | "txt";
   size: number;
-  uploadedAt: string;
-  pageCount?: number;
-  previewUrls?: string[];
+  uploadedAt: number;
+  pageCount: number;
+  previewZones?: PreviewZone[];
+  chunkCount?: number;
+}
+
+export interface PreviewZone {
+  page: number;
+  startLine: number;
+  endLine: number;
+  text: string;
+  sectionTitle?: string;
 }
 
 export interface ChatMessage {

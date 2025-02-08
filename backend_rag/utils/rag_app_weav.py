@@ -23,6 +23,11 @@ from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
 from weaviate.auth import AuthApiKey
+from langchain.schema import Document
+import json
+from langchain_core.messages import SystemMessage, HumanMessage
+from datetime import datetime
+import mimetypes
 
 from weaviate.classes.query import Filter
 
@@ -34,6 +39,7 @@ load_dotenv()
 
 class RAGProcessor:
     def __init__(self):
+        """Initialize RAG application"""
         self.supported_extensions = ['.pdf', '.docx', '.txt']
         # Create directories if they don't exist
         self.upload_dir = Path("uploads")
@@ -48,7 +54,18 @@ class RAGProcessor:
         self.collection_name = "DocumentChunks"
 
         # Initialize text splitter
-        self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=50)
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            length_function=len,
+            separators=["\n\n", "\n", " ", ""]
+        )
+        
+        # Initialize conversation memory
+        self.memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True
+        )
         
         # Initialize RAG components if credentials are available
         if all([self.cluster_url, self.api_key, self.openai_api_key]):
@@ -94,6 +111,7 @@ class RAGProcessor:
                 self.collection = self.client.collections.get(self.collection_name)
                 logger.info(f"Using existing collection: {self.collection_name}")
             else:
+                # Create new collection with properties
                 self.collection = self.client.collections.create(
                     name=self.collection_name,
                     vectorizer_config=wvc.Configure.Vectorizer.text2vec_openai(),
@@ -102,204 +120,259 @@ class RAGProcessor:
                         wvc.Property(name="text", data_type=wvc.DataType.TEXT),
                         wvc.Property(name="document_id", data_type=wvc.DataType.TEXT),
                         wvc.Property(name="page", data_type=wvc.DataType.INT),
-                    ],
+                        wvc.Property(name="start_line", data_type=wvc.DataType.INT),
+                        wvc.Property(name="end_line", data_type=wvc.DataType.INT),
+                        wvc.Property(name="section_title", data_type=wvc.DataType.TEXT),
+                        wvc.Property(name="file_name", data_type=wvc.DataType.TEXT),
+                    ]
                 )
                 logger.info(f"Created new collection: {self.collection_name}")
         except Exception as e:
             logger.error(f"Failed to initialize collection: {e}")
             raise
 
-    def process_document(self, file_path: Path, filename: str, document_id: str) -> Dict[str, Any]:
-        """Process a document and prepare it for RAG operations."""
+    def _store_chunk(self, text: str, document_id: str, page: int, start_line: int, end_line: int, section_title: str, file_name: str):
+        """Store a chunk in the vector store with metadata"""
         try:
-            logger.info(f"Processing document: {filename} with ID: {document_id}")
-
-            # Validate file exists
-            if not file_path.exists():
-                raise FileNotFoundError(f"File not found: {file_path}")
-
-            # Validate file extension
-            file_extension = Path(filename).suffix.lower()
-            if file_extension not in self.supported_extensions:
-                raise ValueError(f"Unsupported file type: {file_extension}")
-
-            # Process based on file type
-            if file_extension == '.pdf':
-                doc_info = self.process_pdf(file_path, document_id)
-            elif file_extension == '.docx':
-                doc_info = self._process_docx(file_path, document_id)
-            else:  # .txt
-                doc_info = self._process_txt(file_path, document_id)
-
-            # Add basic document info
-            doc_info.update({
-                "id": document_id,
-                "filename": filename,
-                "file_type": file_extension,
-                "file_size": os.path.getsize(file_path)
+            # Create object in Weaviate using the new API
+            self.collection.data.insert({
+                "text": text,
+                "document_id": document_id,
+                "page": page,
+                "start_line": start_line,
+                "end_line": end_line,
+                "section_title": section_title,
+                "file_name": file_name
             })
-
-            logger.info(f"Document processed successfully: {doc_info}")
-            return doc_info
-        except Exception as e:
-            logger.error(f"Error processing document: {str(e)}")
-            return {
-                "error": str(e),
-                "status": "failed",
-                "id": document_id,
-                "filename": filename,
-                "page_count": 0,
-                "preview_urls": [],
-                "vector_count": 0
-            }
-
-    def process_pdf(self, file_path: Path, document_id: str) -> Dict[str, Any]:
-        """Process PDF document and prepare it for RAG operations"""
-        try:
-            logger.info(f"Processing PDF: {file_path}")
-
-            # Extract text from PDF
-            loader = PyPDFLoader(str(file_path))
-            pages = loader.load()
             
-            # Split text into chunks
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=20)
-            chunks = text_splitter.split_documents(pages)
+            logger.info(f"Stored chunk for {file_name} (page {page}, lines {start_line}-{end_line})")
+        except Exception as e:
+            logger.error(f"Error storing chunk: {str(e)}")
+            raise
 
-            # Initialize OpenAI embeddings
-            embeddings = OpenAIEmbeddings(openai_api_key=self.openai_api_key)
+    def process_document(self, file_path: Path, document_id: str) -> Dict[str, Any]:
+        """Process document and add to vector store"""
+        try:
+            logger.info(f"Processing document: {file_path}")
+            preview_zones = []
+            total_pages = 1
+            file_name = file_path.name
+            
+            # Process PDF files
+            if file_path.suffix.lower() == '.pdf':
+                with open(file_path, 'rb') as pdf_file:
+                    pdf_reader = PyPDF2.PdfReader(pdf_file)
+                    total_pages = len(pdf_reader.pages)
+                    
+                    for page_num, page in enumerate(pdf_reader.pages, 1):
+                        text = page.extract_text()
+                        if text:
+                            lines = text.split('\n')
+                            current_section = "Main Content"
+                            section_text = []
+                            start_line = 1
+                            
+                            for line_num, line in enumerate(lines, 1):
+                                if line.strip() and (line.isupper() or line.strip().endswith(':')):
+                                    # Save previous section
+                                    if section_text:
+                                        section_content = '\n'.join(section_text)
+                                        preview_zones.append({
+                                            "page": page_num,
+                                            "startLine": start_line,
+                                            "endLine": line_num - 1,
+                                            "text": section_content,
+                                            "sectionTitle": current_section
+                                        })
+                                        
+                                        # Store in vector store
+                                        self._store_chunk(
+                                            text=section_content,
+                                            document_id=document_id,
+                                            page=page_num,
+                                            start_line=start_line,
+                                            end_line=line_num - 1,
+                                            section_title=current_section,
+                                            file_name=file_name
+                                        )
+                                    
+                                    current_section = line.strip()
+                                    section_text = []
+                                    start_line = line_num
+                                else:
+                                    section_text.append(line)
+                            
+                            # Add final section
+                            if section_text:
+                                section_content = '\n'.join(section_text)
+                                preview_zones.append({
+                                    "page": page_num,
+                                    "startLine": start_line,
+                                    "endLine": len(lines),
+                                    "text": section_content,
+                                    "sectionTitle": current_section
+                                })
+                                
+                                # Store in vector store
+                                self._store_chunk(
+                                    text=section_content,
+                                    document_id=document_id,
+                                    page=page_num,
+                                    start_line=start_line,
+                                    end_line=len(lines),
+                                    section_title=current_section,
+                                    file_name=file_name
+                                )
+            
+            else:
+                # Handle other file types (txt, docx)
+                if file_path.suffix.lower() == '.docx':
+                    loader = Docx2txtLoader(str(file_path))
+                else:
+                    loader = TextLoader(str(file_path))
+                    
+                documents = loader.load()
+                text = documents[0].page_content
+                
+                # Create single preview zone for non-PDF files
+                preview_zones.append({
+                    "page": 1,
+                    "startLine": 1,
+                    "endLine": text.count('\n') + 1,
+                    "text": text[:1000],
+                    "sectionTitle": "Main Content"
+                })
+                
+                # Add to vector store
+                chunk = Document(
+                    page_content=text,
+                    metadata={
+                        "document_id": document_id,
+                        "page": 1,
+                        "total_pages": 1,
+                        "content_preview": text[:300],
+                        "sections": ["Main Content"]
+                    }
+                )
+                self.vectorstore.add_texts(
+                    texts=[chunk.page_content],
+                    metadatas=[chunk.metadata]
+                )
 
-            # Connect to Weaviate
-            client = weaviate.connect_to_weaviate_cloud(
-                cluster_url=self.cluster_url,
-                auth_credentials=AuthApiKey(api_key=self.api_key),
-                headers={'X-OpenAI-Api-Key': self.openai_api_key}
-            )
-
-            # Initialize vector store
-            vectorstore = WeaviateVectorStore(
-                client=client,
-                index_name=self.collection_name,
-                text_key="text",
-                embedding=embeddings,
-            )
-
-            # Add text chunks to vector store
-            text_meta_pair = [(chunk.page_content, {"document_id": document_id}) for chunk in chunks]
-            texts, meta = list(zip(*text_meta_pair))
-            vectorstore.add_texts(texts, meta)
-
-            logger.info(f"Successfully processed and stored PDF: {file_path}")
+            # Save preview zones to file for later retrieval
+            preview_file = Path(f"uploads/{document_id}_preview.json")
+            with open(preview_file, 'w', encoding='utf-8') as f:
+                json.dump({"zones": preview_zones}, f, ensure_ascii=False, indent=2)
 
             return {
                 "status": "success",
                 "document_id": document_id,
-                "chunk_count": len(chunks)
+                "file_name": file_name,
+                "page_count": total_pages,
+                "preview_zones": preview_zones,
+                "chunk_count": len(preview_zones)
             }
 
         except Exception as e:
-            logger.error(f"Error processing PDF: {str(e)}")
-            return {
-                "status": "failed",
-                "error": str(e),
-                "document_id": document_id
-            }
+            logger.error(f"Error processing document: {str(e)}")
+            raise
 
-    def _process_docx(self, file_path: Path, document_id: str) -> Dict[str, Any]:
-        """Process DOCX document."""
+    def get_response(self, query: str, document_id: Optional[str] = None, chat_history: Optional[List[Dict]] = None) -> Tuple[str, List[Dict]]:
+        """Get response for a query using the RAG system"""
         try:
-            loader = Docx2txtLoader(str(file_path))
-            pages = loader.load_and_split()
-            chunks = self.text_splitter.split_documents(pages)
-
-            if hasattr(self, 'vectorstore'):
-                self.vectorstore.add_documents(chunks)
-                vector_count = len(chunks)
-            else:
-                vector_count = 0
-
-            return {
-                "page_count": len(pages),
-                "preview_urls": [],  # DOCX doesn't support previews in this implementation
-                "vector_count": vector_count
-            }
-        except Exception as e:
-            logger.error(f"Error processing DOCX: {str(e)}")
-            return {
-                "page_count": 0,
-                "preview_urls": [],
-                "vector_count": 0
-            }
-
-    def _process_txt(self, file_path: Path, document_id: str) -> Dict[str, Any]:
-        """Process TXT document."""
-        try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-
-            # Split text into chunks
-            chunks = self.text_splitter.split_text(content)
-
-            if hasattr(self, 'vectorstore'):
-                self.vectorstore.add_texts(texts=chunks, metadatas=[{"document_id": document_id}] * len(chunks))
-                vector_count = len(chunks)
-            else:
-                vector_count = 0
-
-            return {
-                "page_count": 1,  # TXT files are treated as single-page documents
-                "preview_urls": [],  # TXT files don't have previews
-                "vector_count": vector_count
-            }
-        except Exception as e:
-            logger.error(f"Error processing TXT: {str(e)}")
-            return {
-                "page_count": 0,
-                "preview_urls": [],
-                "vector_count": 0
-            }
-
-    def get_response(self, query: str, document_id: Optional[str] = None, chat_history: Optional[List[Dict]] = None) -> Tuple[str, List[str]]:
-        try:
-            # Initialize OpenAI embeddings
-            embeddings = OpenAIEmbeddings(openai_api_key=self.openai_api_key)
-
-            # Connect to Weaviate
-            client = weaviate.connect_to_weaviate_cloud(
-                cluster_url=self.cluster_url,
-                auth_credentials=AuthApiKey(api_key=self.api_key),
-                headers={'X-OpenAI-Api-Key': self.openai_api_key}
+            # Initialize LLM
+            llm = ChatOpenAI(
+                temperature=0.7,
+                model_name="gpt-3.5-turbo",
+                openai_api_key=self.openai_api_key
             )
 
-            # Initialize vector store
-            vectorstore = WeaviateVectorStore(
-                client=client,
-                index_name=self.collection_name,
-                text_key="text",
-                embedding=embeddings,
-            )
+            # Get relevant documents first
+            docs = self.vectorstore.similarity_search_with_score(query=query, k=5)
+            
+            if not docs:
+                return "I don't see any documents in the system. Please upload some documents first.", []
 
-            # Initialize the conversational chain
-            llm = ChatOpenAI(temperature=0.7, model_name="gpt-3.5-turbo", openai_api_key=self.openai_api_key)
-            memory = ConversationBufferMemory(memory_key='chat_history', return_messages=True)
-            conversation_chain = ConversationalRetrievalChain.from_llm(
-                llm=llm,
-                chain_type="stuff",
-                retriever=vectorstore.as_retriever(),
-                memory=memory
-            )
+            # Process sources with proper document info
+            sources = []
+            context_texts = []
+            
+            for doc, score in docs:
+                # Get metadata
+                metadata = doc.metadata
+                doc_id = str(metadata.get("document_id", ""))
+                
+                try:
+                    # Get file info from uploads directory
+                    file_path = next(Path("uploads").glob(f"{doc_id}.*"))
+                    file_stats = file_path.stat()
+                    
+                    # Create document info
+                    document_info = {
+                        "id": doc_id,
+                        "name": file_path.name,
+                        "type": mimetypes.guess_type(file_path)[0] or "application/octet-stream",
+                        "size": file_stats.st_size,
+                        "uploadedAt": datetime.fromtimestamp(file_stats.st_mtime).isoformat(),
+                        "pageCount": metadata.get("page_count", 1),
+                        "previewUrls": []
+                    }
 
-            # Query the conversation chain
-            result = conversation_chain.invoke({"question": query})
-            answer = result["answer"]
+                    # Create source info
+                    source_info = {
+                        "document_id": doc_id,
+                        "file_name": file_path.name,
+                        "page": metadata.get("page", 1),
+                        "text": doc.page_content,
+                        "relevance_score": round(float(1 - (score or 0)), 3),
+                        "start_line": metadata.get("start_line"),
+                        "end_line": metadata.get("end_line"),
+                        "section_title": metadata.get("section_title", "Main Content"),
+                        "document_info": document_info
+                    }
+                    
+                    # Add to context
+                    context_texts.append(f"From {file_path.name} (Page {metadata.get('page', 1)}):\n{doc.page_content}\n")
+                    sources.append(source_info)
+                    
+                    logger.info(f"Processed source from {file_path.name}")
+                    
+                except StopIteration:
+                    logger.warning(f"Could not find file for document ID: {doc_id}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error processing document {doc_id}: {str(e)}")
+                    continue
 
-            # Log the answer
-            logger.info(f"Answer: {answer}")
+            if not sources:
+                return "Could not find relevant information in the documents.", []
 
-            return answer, []
+            # Create full context
+            full_context = "\n\n".join(context_texts)
+            
+            # Create messages
+            messages = [
+                SystemMessage(content="""You are a helpful AI assistant that provides accurate information based on the documents provided. 
+                When answering:
+                1. Use only the information from the provided documents
+                2. If you don't have enough information, say so clearly
+                3. Cite specific documents and sections when providing information
+                4. Maintain the original meaning and context"""),
+                HumanMessage(content=f"Context:\n{full_context}\n\nQuestion: {query}")
+            ]
+
+            # Get response
+            chat_response = llm(messages)
+            
+            # Log for debugging
+            logger.info(f"Query: {query}")
+            logger.info(f"Number of sources found: {len(sources)}")
+            logger.info(f"Sources: {[s['file_name'] for s in sources]}")
+            
+            return chat_response.content, sources
 
         except Exception as e:
-            logger.error(f"Error in get_response: {str(e)}")
+            logger.error(f"Error in get_response: {str(e)}", exc_info=True)
             raise
 
     def cleanup(self) -> None:
