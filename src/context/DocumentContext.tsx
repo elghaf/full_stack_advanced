@@ -7,17 +7,17 @@ interface Document {
   name: string;
   type: string;
   size: number;
-  uploadedAt: number;
+  uploadedAt: string;
   pageCount: number;
-  previewZones: any[];
-  previewUrls: string[];
-  sourceInfo?: {
-    documentId: string;
-    fileName: string;
+  previewZones: Array<{
     page: number;
-    relevanceScore: number;
+    startLine: number;
+    endLine: number;
     text: string;
-  }[];
+    sectionTitle?: string;
+  }>;
+  previewUrls: string[];
+  sourceInfo: any[];
 }
 
 export interface DocumentContextType {
@@ -34,8 +34,12 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [activeDocument, setActiveDocument] = useState<Document | null>(null);
 
+  const addDocument = (document: Document) => {
+    setDocuments(prev => [...prev, document]);
+  };
+
   return (
-    <DocumentContext.Provider value={{ documents, activeDocument, setDocuments, setActiveDocument }}>
+    <DocumentContext.Provider value={{ documents, activeDocument, setDocuments, setActiveDocument, addDocument }}>
       {children}
     </DocumentContext.Provider>
   );

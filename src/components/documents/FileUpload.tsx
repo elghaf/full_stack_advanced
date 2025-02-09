@@ -65,6 +65,10 @@ export const FileUpload = () => {
           sourceInfo: data.document.sourceInfo || []
         });
       }
+
+      // Add automatic page reload after successful upload
+      window.location.reload();
+
     } catch (error) {
       console.error('Upload error:', error);
       alert(error instanceof Error ? error.message : 'Failed to upload file');

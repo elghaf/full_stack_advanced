@@ -263,26 +263,28 @@ async def download_document(document_id: str):
 
 @router.post("/files")
 async def upload_file(file: UploadFile = File(...)):
-    """Upload and process a document"""
     try:
-        # Generate unique ID for the document
         document_id = str(uuid.uuid4())
-        
-        # Create uploads directory if it doesn't exist
         uploads_dir = Path("uploads")
         uploads_dir.mkdir(exist_ok=True)
         
-        # Save file with original extension
         file_extension = Path(file.filename).suffix
         file_path = uploads_dir / f"{document_id}{file_extension}"
         
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # Initialize RAG processor and process document
+        # Process document and get preview zones
         process_result = rag_processor.process_document(file_path, document_id)
         
-        # Get file stats
+        # Save preview data to a JSON file
+        preview_data = {
+            "zones": process_result.get("preview_zones", [])
+        }
+        preview_file = uploads_dir / f"{document_id}_preview.json"
+        with open(preview_file, 'w', encoding='utf-8') as f:
+            json.dump(preview_data, f, ensure_ascii=False, indent=2)
+        
         stats = file_path.stat()
         
         return {
@@ -294,12 +296,14 @@ async def upload_file(file: UploadFile = File(...)):
                 "size": stats.st_size,
                 "uploadedAt": stats.st_mtime,
                 "pageCount": process_result.get("page_count", 1),
+                "previewUrls": [],
                 "previewZones": process_result.get("preview_zones", []),
-                "chunkCount": process_result.get("chunk_count", 0)
+                "chunkCount": len(process_result.get("preview_zones", []))
             }
         }
 
     except Exception as e:
+        logger.error(f"Error uploading file: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Error uploading file: {str(e)}"
