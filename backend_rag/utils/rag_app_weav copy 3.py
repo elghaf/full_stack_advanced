@@ -29,8 +29,8 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from datetime import datetime
 import mimetypes
 from tqdm import tqdm
-import unittest
-from unittest.mock import patch, MagicMock
+
+from weaviate.classes.query import Filter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -280,7 +280,7 @@ class RAGProcessor:
             docs = self.vectorstore.similarity_search_with_score(query=query, k=5)
             
             if not docs:
-                return "I couldn't find any relevant information in the documents. Please try rephrasing your query or upload more documents.", []
+                return "I don't see any documents in the system. Please upload some documents first.", []
 
             # Process sources with proper document info
             sources = []
@@ -309,6 +309,9 @@ class RAGProcessor:
                         service_info['name'] = line.replace('Nom du service EN:', '').strip()
                     elif line.startswith('DESCRIPTION EN EN:'):
                         service_info['description'] = line.replace('DESCRIPTION EN EN:', '').strip()
+                
+                # Log extracted service information
+                logger.info(f"Extracted service ID: {service_id}, Name: {service_info.get('name')}, URL: {service_info.get('url')}, Description: {service_info.get('description')}")
                 
                 # Skip if we've already seen this service ID or if it's empty
                 if not service_id or service_id in seen_ids or not service_info.get('description'):
@@ -339,7 +342,7 @@ class RAGProcessor:
                 sources.append(source_info)
                 
                 logger.info(f"Processed service ID: {service_id} (lines {start_line}-{end_line})")
-           
+            
             if not sources:
                 return "Could not find relevant information in the documents.", []
 
@@ -356,6 +359,12 @@ class RAGProcessor:
         except Exception as e:
             logger.error(f"Error in get_response: {str(e)}", exc_info=True)
             raise
+        
+
+    def extract_relevant_snippet(self, text: str, query: str) -> str:
+        # Implement logic to extract a relevant snippet from the text
+        # This could involve simple keyword matching or more advanced NLP techniques
+        return "Relevant snippet from the document"
 
     def cleanup(self) -> None:
         """Cleanup resources."""

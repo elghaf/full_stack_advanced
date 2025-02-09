@@ -21,6 +21,7 @@ interface Source {
   page: number;
   text: string;
   relevance_score: number;
+  url?: string;
 }
 
 interface ChatMessage {
@@ -54,11 +55,35 @@ const SourceDisplay = ({ sources }: { sources: Source[] }) => (
           <div className="text-sm text-gray-600 line-clamp-3">
             {source.text?.replace(/\n+\s*/g, ' ').trim()}
           </div>
+          {source.url && (
+            <div className="mt-1 text-xs text-blue-500">
+              <a href={source.url} target="_blank" rel="noopener noreferrer" className="underline">
+                More information
+              </a>
+            </div>
+          )}
         </div>
       ))}
     </div>
   </div>
 );
+
+const formatResponse = (response: string) => {
+  const [servicesPart, sourcesPart] = response.split('Sources:');
+  
+  const services = servicesPart.trim().split('\n\n').map(service => {
+    const [title, ...descriptionLines] = service.split('\n');
+    const description = descriptionLines.join(' ').trim();
+    return {
+      title: title.replace(/\*\*/g, '').trim(),
+      description: description
+    };
+  }).filter(service => service.title);
+
+  const sources = sourcesPart ? sourcesPart.trim().split('\n').filter(line => line.startsWith('1.')) : [];
+
+  return { services, sources };
+};
 
 const ChatInterface = () => {
   const { activeDocument, documents } = useDocuments();
@@ -104,57 +129,28 @@ const ChatInterface = () => {
         }),
       });
 
-      const data = await response.json();
-      
-      // Log API Response
-      console.group('📥 API Response Details');
-      console.table({
-        status: response.status,
-        messageId: data.id,
-        timestamp: new Date().toLocaleString(),
-        contentLength: data.content.length
-      });
-
-      // Log Sources
-      if (data.sources && data.sources.length > 0) {
-        console.group('📚 Source Documents');
-        data.sources.forEach((source, index) => {
-          console.log(`Source ${index + 1}:`, {
-            documentId: source.document_id,
-            fileName: source.file_name,
-            page: source.page,
-            relevanceScore: source.relevance_score,
-            text: source.text.substring(0, 100) + (source.text.length > 100 ? '...' : '')
-          });
-        });
-        console.groupEnd();
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error('Failed to get response from backend');
       }
 
-      // Log AI Response
-      console.group('🤖 AI Response');
-      console.log({
-        content: data.content,
-        sourceCount: data.sources?.length || 0,
-        timestamp: new Date().toLocaleString()
-      });
-      console.groupEnd();
+      const data = await response.json();
+      const { services, sources } = formatResponse(data.content);
       
       const botMessage: ChatMessage = {
         id: data.id,
-        content: data.content,
+        content: services.map(service => `**${service.title}**: ${service.description}`).join('\n\n'),
         sender: 'ai',
         timestamp: new Date().toISOString(),
-        sources: data.sources
+        sources: data.sources // Assuming sources is already in the correct format
       };
 
       setMessages(prev => [...prev, botMessage]);
       console.groupEnd(); // API Response Details
-      console.groupEnd(); // Chat API Interaction
       
     } catch (error) {
       console.group('❌ Error Details');
-      
-      // Check if error is an instance of Error and has the expected properties
       if (error instanceof Error) {
         console.error({
           type: error.name,
@@ -162,20 +158,17 @@ const ChatInterface = () => {
           timestamp: new Date().toLocaleString()
         });
       } else {
-        // Handle unexpected error types
         console.error({
           type: 'Unknown Error',
           message: typeof error === 'string' ? error : 'An unexpected error occurred',
           timestamp: new Date().toLocaleString()
         });
       }
-      
       console.groupEnd();
     } finally {
       setIsLoading(false);
     }
   };
-
 
   return (
     <div className="w-3/5 flex flex-col">
