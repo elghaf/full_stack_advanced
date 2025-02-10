@@ -31,12 +31,18 @@ import mimetypes
 from tqdm import tqdm
 import unittest
 from unittest.mock import patch, MagicMock
+from weaviate.classes.query import Filter
+import openai
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+# Ensure you have your OpenAI API key set in your environment variables
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 class RAGProcessor:
     def __init__(self):
@@ -269,37 +275,65 @@ class RAGProcessor:
     def get_response(self, query: str, document_id: Optional[str] = None, chat_history: Optional[List[Dict]] = None) -> Tuple[str, List[Dict]]:
         """Get response for a query using the RAG system"""
         try:
-            # Initialize LLM
-            llm = ChatOpenAI(
-                temperature=0.7,
-                model_name="gpt-4-turbo",
-                openai_api_key=self.openai_api_key
-            )
+            # Check if the query is a single word
+            is_single_word = len(query.split()) == 1
 
-            # Get relevant documents first
-            docs = self.vectorstore.similarity_search_with_score(query=query, k=5)
-            
-            if not docs:
+            # Create the query result based on whether it's a single word or not
+            if  (is_single_word == False):
+                query_result = self.collection.query.near_text(
+                    query=query,
+                    limit=10
+                )
+            else:
+                query_filter = Filter.by_property("text").like(f"*{query}*")
+                query_result = self.collection.query.near_text(
+                    query=query,
+                    limit=10,
+                    filters=query_filter
+                )
+
+            data_response = query_result.objects
+
+            if not data_response:
                 return "I couldn't find any relevant information in the documents. Please try rephrasing your query or upload more documents.", []
 
-            # Process sources with proper document info
+            # Prepare the data for OpenAI
+            data_to_send = "\n".join([doc.properties['text'] for doc in data_response])
+
+            # Call OpenAI to select the most relevant response
+            openai_response = openai.ChatCompletion.create(
+                model="gpt-4",  # or the model you want to use
+                messages=[
+                    {"role": "user", "content": f"Based on the query_for_client= '{query}', select the most relevant response from the following data_response:\n{data_to_send}"}
+                ]
+            )
+
+            # Extract the selected response from OpenAI
+            selected_response = openai_response['choices'][0]['message']['content']
+            print("****************************\n")
+            print(f"Selected response: {selected_response}")
+            print("****************************\n")
+            # Process the selected response as needed
+            # You can further parse this selected response if necessary
+
+            # Continue with your existing logic to format responses and sources
             sources = []
-            seen_ids = set()  # Track seen service IDs to avoid duplicates
+            seen_ids = set()
             formatted_responses = []
-            
-            for doc, score in docs:
+
+            for doc in data_response:
                 # Get metadata
-                metadata = doc.metadata
+                metadata = doc.properties
                 start_line = metadata.get("start_line", 0)
                 end_line = metadata.get("end_line", 0)
                 file_name = metadata.get("file_name", "Unknown")
                 page = metadata.get("page", 1)
-                
+
                 # Extract service ID from content
-                content_lines = doc.page_content.split('\n')
+                content_lines = doc.properties['text'].split('\n')
                 service_id = None
                 service_info = {}
-                
+
                 for line in content_lines:
                     if line.startswith('ID:'):
                         service_id = line.replace('ID:', '').strip()
@@ -309,12 +343,12 @@ class RAGProcessor:
                         service_info['name'] = line.replace('Nom du service EN:', '').strip()
                     elif line.startswith('DESCRIPTION EN EN:'):
                         service_info['description'] = line.replace('DESCRIPTION EN EN:', '').strip()
-                
+
                 # Skip if we've already seen this service ID or if it's empty
                 if not service_id or service_id in seen_ids or not service_info.get('description'):
                     logger.warning(f"Skipping service ID: {service_id} - already seen or missing description.")
                     continue
-                
+
                 seen_ids.add(service_id)
 
                 # Format the response with service information and URL
@@ -323,34 +357,34 @@ class RAGProcessor:
                     if service_info.get('url'):
                         response += f"\n→ More information: {service_info['url']}"
                     formatted_responses.append(response)
-                
+
                 # Create source info with all fields at the root level
                 source_info = {
                     "document_id": service_id,
                     "service_name": service_info.get('name', ''),
                     "description": service_info.get('description', ''),
                     "url": service_info.get('url', ''),
-                    "relevance_score": round(float(1 - (score or 0)), 3),
-                    "file_name": file_name,  # Moved to root level
-                    "page": page,  # Moved to root level
-                    "start_line": start_line,  # Moved to root level
-                    "end_line": end_line  # Moved to root level
+                    "relevance_score": 1.0,  # Adjust as needed
+                    "file_name": file_name,
+                    "page": page,
+                    "start_line": start_line,
+                    "end_line": end_line
                 }
                 sources.append(source_info)
-                
+
                 logger.info(f"Processed service ID: {service_id} (lines {start_line}-{end_line})")
-           
+
             if not sources:
                 return "Could not find relevant information in the documents.", []
 
             # Combine all formatted responses into a single string with proper spacing
-            final_response = "\n\n".join(formatted_responses)
-            
+            final_response = selected_response  # Use the selected response from OpenAI
+
             # Add source information to the response
             final_response += "\n\nSources:"
             for idx, source in enumerate(sources, 1):
                 final_response += f"\n{idx}. Found in {source['file_name']} (Page {source['page']}, Lines {source['start_line']}-{source['end_line']})"
-            
+
             return final_response, sources
 
         except Exception as e:
