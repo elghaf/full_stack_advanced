@@ -74,9 +74,6 @@ class RAGProcessor:
             return_messages=True
         )
         
-        # Initialize the language model
-        self.llm = ChatOpenAI() 
-        
         # Initialize RAG components if credentials are available
         if all([self.cluster_url, self.api_key, self.openai_api_key]):
             self._initialize_rag_components()
@@ -278,57 +275,62 @@ class RAGProcessor:
     def get_response(self, query: str, document_id: Optional[str] = None, chat_history: Optional[List[Dict]] = None) -> Tuple[str, List[Dict]]:
         """Get response for a query using the RAG system"""
         try:
-            # Create retriever from the vector store
-            retriever = self.vectorstore.as_retriever()
+            # Check if the query is a single word
+            is_single_word = len(query.split()) == 1
 
-            # Retrieve relevant documents
-            retrieved_docs = retriever.get_relevant_documents(query)
+            # Create the query result based on whether it's a single word or not
+            if  (is_single_word == False):
+                query_result = self.collection.query.near_text(
+                    query=query,
+                    limit=10
+                )
+            else:
+                query_filter = Filter.by_property("text").like(f"*{query}*")
+                query_result = self.collection.query.near_text(
+                    query=query,
+                    limit=10,
+                    filters=query_filter
+                )
 
-            # Prepare the context for the prompt
-            context = "\n".join([doc.page_content for doc in retrieved_docs])
+            data_response = query_result.objects
 
-            # Optionally, log metadata if needed
-            for doc in retrieved_docs:
-                logger.info(f"Retrieved Document Metadata: {doc.metadata}")
+            if not data_response:
+                return "I couldn't find any relevant information in the documents. Please try rephrasing your query or upload more documents.", []
 
-            # Create the prompt with context
-            template = """
-            You are a helpful assistant that answers questions based on the provided context.
-            Use the provided context to answer the Question_from_client.
-            the answer is in the Context_that_has_the_answer.
-            Question_from_client= {input}
-            Context_that_has_the_answer= {context}
-            """
-            prompt = template.format(input=query, context=context)  # Format the prompt string
+            # Prepare the data for OpenAI
+            data_to_send = "\n".join([doc.properties['text'] for doc in data_response])
 
-            # Call the LLM to get the response
-            final_response = self.llm.invoke(prompt)  # Pass the formatted prompt string
+            # Call OpenAI to select the most relevant response
+            openai_response = openai.ChatCompletion.create(
+                model="gpt-4",  # or the model you want to use
+                messages=[
+                    {"role": "user", "content": f"Based on the query_for_client= '{query}', select the most relevant response from the following data_response:\n{data_to_send}"}
+                ]
+            )
 
-            # Ensure final_response is a string
-            if not isinstance(final_response, str):
-                logger.error("Final response is not a string. Converting to string.")
-                final_response = str(final_response)
-
-            # Process the final response as needed
+            # Extract the selected response from OpenAI
+            selected_response = openai_response['choices'][0]['message']['content']
             print("****************************\n")
-            print(f"Final response: {final_response}")
+            print(f"Selected response: {selected_response}")
             print("****************************\n")
+            # Process the selected response as needed
+            # You can further parse this selected response if necessary
 
             # Continue with your existing logic to format responses and sources
             sources = []
             seen_ids = set()
             formatted_responses = []
 
-            for doc in retrieved_docs:
+            for doc in data_response:
                 # Get metadata
-                metadata = doc.metadata
+                metadata = doc.properties
                 start_line = metadata.get("start_line", 0)
                 end_line = metadata.get("end_line", 0)
                 file_name = metadata.get("file_name", "Unknown")
                 page = metadata.get("page", 1)
 
                 # Extract service ID from content
-                content_lines = doc.page_content.split('\n')
+                content_lines = doc.properties['text'].split('\n')
                 service_id = None
                 service_info = {}
 
@@ -376,6 +378,9 @@ class RAGProcessor:
                 return "Could not find relevant information in the documents.", []
 
             # Combine all formatted responses into a single string with proper spacing
+            final_response = selected_response  # Use the selected response from OpenAI
+
+            # Add source information to the response
             final_response += "\n\nSources:"
             for idx, source in enumerate(sources, 1):
                 final_response += f"\n{idx}. Found in {source['file_name']} (Page {source['page']}, Lines {source['start_line']}-{source['end_line']})"
