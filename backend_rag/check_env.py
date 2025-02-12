@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 def check_env():
     load_dotenv()
-    
+    # add more information about the process
     # List of required environment variables
     required_vars = ['WCD_URL', 'WCD_API_KEY', 'OPENAI_API_KEY']
     
